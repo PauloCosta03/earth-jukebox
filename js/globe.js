@@ -217,10 +217,11 @@ function init() {
            * (1.0 - clamp(flood, 0.0, 1.0) * 0.85)   // cidades inundadas apagam
            * (1.0 - ice);
 
-      // --- 🔥 queimadas: brilho laranja que tremula (visível de dia e de noite)
-      float fire = atlas(uFireTex, uFireGrid, uFireF).r;
-      float flicker = 0.75 + 0.25 * sin(uTime * 7.0 + hash(floor(vUv * 720.0)) * 30.0);
-      col += vec3(1.0, 0.42, 0.08) * fire * flicker * uFireOn * 1.6;
+      // --- 🔥 queimadas: brasas que tremulam; só fogo frequente, mais forte no lado da noite
+      float fire = smoothstep(0.3, 0.9, atlas(uFireTex, uFireGrid, uFireF).r);    // ignora focos raros
+      float flicker = 0.7 + 0.3 * sin(uTime * 7.0 + hash(floor(vUv * 720.0)) * 30.0);
+      float night = 1.0 - smoothstep(0.0, 0.3, dayAmt);
+      col += vec3(1.0, 0.38, 0.06) * fire * flicker * uFireOn * (0.45 + 1.4 * night);
 
       // --- 🛡️ buraco de ozônio: abaixo de 220 DU (definição oficial de "buraco") fica roxo;
       //     entre 240 e 220 DU vai aparecendo em azul. Visível de dia e de noite.

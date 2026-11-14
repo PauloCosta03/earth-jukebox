@@ -21,7 +21,12 @@ Terra renderizada com **three.js** e texturas reais da NASA (Blue Marble de dia,
 | 🌃 Luzes | Luzes das cidades no lado noturno, acendendo com a industrialização | NASA Black Marble |
 | 🌊 Inundação | Áreas costeiras baixas inundando conforme o mar sobe (exagero vertical p/ escala global) | Relevo real + nível do mar NASA |
 | 🧊 Gelo | Calota ártica com borda irregular, dimensionada pela extensão real medida por satélite | NSIDC Sea Ice Index |
-| 🌡️ Calor | Tinta térmica e atmosfera avermelhada conforme a anomalia de temperatura | NASA GISTEMP |
+| 🌡️ Calor | Mapa real da anomalia de temperatura por região, ano a ano (média móvel de 5 anos) | NASA GISTEMP (até 2025) + modelo GISS-E2.1-G (projeção) |
+| ☁️ Nuvens | 16 dias seguidos de nuvens reais, em loop | NASA GIBS — VIIRS cor real |
+| 🌿 Vegetação | Mês de pico verde de cada ano, 2001–2025 | NASA GIBS — MODIS NDVI |
+| 🔥 Queimadas | Onde o fogo é frequente em cada ano, 2001–2025 | NASA GIBS — MODIS Thermal Anomalies |
+| 🌬️ Ventos | Partículas seguindo o vento médio de cada década, por cenário | Modelo GISS-E2.1-G (uas/vas) |
+| 🛡️ Ozônio | Buraco de ozônio na Antártida (abaixo de 220 DU), set–out de cada ano, 1979–2025 | NASA Ozone Watch (TOMS, OMI) |
 
 ### Camadas de áudio (cards à direita)
 
@@ -55,6 +60,8 @@ data/projections.js         projeções por cenário SSP (GERADO pelo script)
 data/provenance.json        fonte e ajustes de cada série (GERADO pelo script)
 assets/textures/            texturas NASA (Blue/Black Marble, relevo, oceanos)
 scripts/fetch_nasa_data.py  pipeline: baixa os dados da NASA e gera os arquivos de data/
+scripts/build_layers.py     gera as texturas das camadas (assets/layers/) e data/layers.js
+assets/layers/              texturas das camadas (GERADAS pelo script)
 ```
 
 ## Dados
@@ -96,6 +103,15 @@ python -m venv .venv
 ```
 
 Na primeira execução, ~350 MB de saídas do modelo são baixados para `data/cache/` (ignorado pelo git). Para o nível do mar observado, defina `EARTHDATA_TOKEN` com um token de https://urs.earthdata.nasa.gov antes de rodar. Se uma fonte falhar, a série mantém os valores atuais e o motivo é impresso.
+
+### Camadas do globo
+
+```
+.venv\Scripts\python scripts/build_layers.py              (todas)
+.venv\Scripts\python scripts/build_layers.py ozone fire   (só algumas)
+```
+
+Gera as texturas em `assets/layers/` (atlas: um quadro por ano lado a lado) e os metadados em `data/layers.js`. Baixa ~2 GB na primeira vez (cache em `data/cache/`). Camadas sem dado num ano (ex.: vegetação antes de 2001, ozônio em 1995) somem suavemente.
 
 ## Créditos
 

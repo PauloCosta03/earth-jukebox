@@ -28,6 +28,7 @@ Ninguém faz commit direto na `main`.
 | Gráfico 2D | `js/chart.js` |
 | Botões, textos e eventos | `js/main.js`, `index.html` |
 | Visual (cores, layout) | `css/style.css` |
+| Texturas das camadas | `scripts/build_layers.py` (gera `assets/layers/`) |
 | Dados (todos) | `scripts/fetch_nasa_data.py` (gera os arquivos de `data/`) |
 | Regra de dados | só fontes abertas da NASA (ver README, seção Dados) |
 

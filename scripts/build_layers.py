@@ -324,23 +324,27 @@ def build_fire():
     for y in years:
         d = dt.date(y, 1, 1)
         while d.year == y:
-            dest = CACHE / "gibs" / "fire" / f"{d}.png"
-            jobs.append((GIBS_WMS.format(w=720, h=360, fmt="image/png",
+            # 4x a resolução final: o servidor desenha cada foco como um círculo de tamanho fixo em
+            # pixels; em 720 px cada círculo cobria ~50 km e o ano somado "pintava" o continente todo.
+            dest = CACHE / "gibs" / "fire2880" / f"{d}.png"
+            jobs.append((GIBS_WMS.format(w=2880, h=1440, fmt="image/png",
                                          layer="MODIS_Combined_Thermal_Anomalies_All", time=d), dest))
             by_year[y].append(dest)
             d += dt.timedelta(days=8)
     download_many(jobs, "queimadas")
     counts = []
     for y in years:
-        c, n = np.zeros((360, 720), "f4"), 0
+        c, n = np.zeros((1440, 2880), "f4"), 0
         for p in by_year[y]:
             im = open_png(p)
             if im is None:                                      # dia sem dado no servidor: pula
                 continue
             c += np.asarray(im)[..., 3] > 0
             n += 1
+        c = c.reshape(360, 4, 720, 4).mean(axis=(1, 3))         # reduz 4x4 -> 720x360 (média)
         counts.append(c / max(n, 1))                            # fração dos dias amostrados com fogo
-    frames = [(np.clip(np.sqrt(c / 0.35), 0, 1) * 255).astype(np.uint8) for c in counts]
+    # 10% ou mais dos dias com fogo = intensidade máxima
+    frames = [(np.clip(c / 0.10, 0, 1) * 255).astype(np.uint8) for c in counts]
     info = write_atlas("fire", frames, "L", 5)
     return {**info, "frames": {"hist": [years[0], years[-1], 0, 1]},
             "source": "NASA GIBS — MODIS Terra+Aqua Thermal Anomalies (amostra a cada 8 dias)"}
