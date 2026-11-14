@@ -15,7 +15,12 @@
 <a class="skip" href="#play">Pular para os controles de reprodução</a>
 
 <div id="globe" role="img" aria-label="Globo 3D da Terra mostrando as camadas de dados climáticos selecionadas"></div>
+<!-- (colega) imagem/vídeo carregado e linha da varredura -->
+<div id="frame-view" aria-hidden="true"></div>
+<div id="scanline" aria-hidden="true"></div>
 <div id="loading" role="status"><div class="spin" aria-hidden="true"></div><p>Carregando a Terra…</p></div>
+<!-- (colega) anúncios para leitores de tela: só eventos relevantes, não cada ano -->
+<div id="sr-live" class="sr-only" aria-live="polite" aria-atomic="true"></div>
 
 <header class="topbar">
   <h1 class="brand panel">EARTH JUKEBOX</h1>
@@ -86,8 +91,32 @@
       </button>
       <button class="mute-layer" aria-pressed="false" aria-label="Silenciar nível do mar">🔊</button>
     </div>
+    <div class="card" data-layer="img" style="--c:var(--img)">
+      <button class="solo" aria-pressed="false">
+        <span class="lbl">👁️ Imagem</span><span class="val" id="v-img">–</span>
+        <span class="snd">acordes, arpejo e pulso lidos dos pixels</span>
+      </button>
+      <button class="mute-layer" aria-pressed="false" aria-label="Silenciar a leitura da imagem">🔊</button>
+    </div>
   </div>
+  <p id="desc" class="desc" aria-hidden="true"></p>
   <canvas id="chart" aria-label="Gráfico das quatro séries ao longo do tempo" role="img"></canvas>
+
+  <!-- (colega) ouvir qualquer imagem ou vídeo da NASA -->
+  <h3>Ouvir uma imagem</h3>
+  <p class="note">Abra (ou arraste para a tela) uma imagem ou vídeo do NASA Earth Information Center ou do Scientific Visualization Studio.</p>
+  <div class="row">
+    <button id="frame-btn" class="btn">📂 Abrir imagem ou vídeo</button>
+    <button id="globe-btn" class="btn" hidden>🌍 Voltar ao globo</button>
+    <input id="file" type="file" accept="image/*,video/*" hidden>
+  </div>
+  <label class="field">Perfil de som
+    <select id="profile"></select>
+  </label>
+  <div class="row">
+    <button id="scan" class="btn">🔍 Varrer a imagem <kbd>S</kbd></button>
+    <button id="rec" class="btn">⏺ Gravar áudio</button>
+  </div>
 </section>
 
 <!-- ============ CAIXINHA: SOBRE ============ -->
@@ -98,8 +127,18 @@
   <ul>
     <li>Arraste a Terra para girar e role para aproximar.</li>
     <li>Teclado: <kbd>Tab</kbd> navega, <kbd>Enter</kbd> ativa, <kbd>Esc</kbd> fecha a caixinha aberta.</li>
-    <li>No controle de ano, as setas avançam um ano por vez.</li>
+    <li>Atalhos: <kbd>Espaço</kbd> tocar/pausar · <kbd>←</kbd> <kbd>→</kbd> ano (com <kbd>Shift</kbd>, 10 anos) · <kbd>D</kbd> descrever a tela · <kbd>S</kbd> varrer a imagem · <kbd>M</kbd> mudo.</li>
   </ul>
+  <h3>Como a imagem vira som</h3>
+  <ul>
+    <li><b>Cor</b> → notas do acorde (cada cor dominante é um grau da escala)</li>
+    <li><b>Brilho</b> → timbre (escuro = abafado)</li>
+    <li><b>Pontos brilhantes</b> → arpejo (luzes, nuvens, relâmpagos)</li>
+    <li><b>Bordas</b> → chiado rítmico · <b>Movimento</b> → golpes graves</li>
+    <li><b>Varredura</b> → da esquerda para a direita; parte mais alta da imagem = nota mais aguda</li>
+    <li><b>Calor</b> → a escala escurece (de maior até lócria) e desafina</li>
+  </ul>
+  <p class="note">No globo, o som também lê o próprio quadro desenhado: gire a Terra ou ligue camadas e a música muda.</p>
   <h3>Dados e créditos</h3>
   <ul>
     <li>Temperatura: <a href="https://data.giss.nasa.gov/gistemp/" target="_blank" rel="noopener">NASA GISTEMP v4</a></li>
@@ -109,21 +148,23 @@
     <li>Projeções: modelo climático <a href="https://data.giss.nasa.gov/modelE/cmip6/" target="_blank" rel="noopener">NASA GISS-E2.1-G</a> (CMIP6)</li>
     <li>Camadas: <a href="https://www.earthdata.nasa.gov/engage/open-data-services-software/earthdata-developer-portal/gibs-api" target="_blank" rel="noopener">NASA GIBS</a> (nuvens VIIRS, vegetação e queimadas MODIS), mapa GISTEMP, ventos GISS-E2.1-G, ozônio <a href="https://ozonewatch.gsfc.nasa.gov" target="_blank" rel="noopener">NASA Ozone Watch</a></li>
     <li>Texturas: NASA Blue Marble &amp; Black Marble · 3D: three.js</li>
+    <li>Visualizações para ouvir: <a href="https://svs.gsfc.nasa.gov/" target="_blank" rel="noopener">NASA Scientific Visualization Studio</a> · <a href="https://earth.gov/" target="_blank" rel="noopener">Earth Information Center</a></li>
   </ul>
   <p class="note">A inundação e a borda do gelo usam relevo e extensão reais, com exagero visual para leitura em escala global. Projeções de uma simulação do modelo da NASA por cenário SSP; detalhes e ajustes no README.</p>
 </section>
 
 <!-- ============ BARRA DE REPRODUÇÃO (sempre visível, compacta) ============ -->
 <footer class="player panel">
-  <!-- aria-live: o leitor de tela lê os acontecimentos históricos quando mudam -->
-  <p id="msg" aria-live="polite">Aperte tocar e escute 220 anos de clima.</p>
+  <!-- os acontecimentos são lidos pelo leitor de tela via #sr-live (evita leitura duplicada) -->
+  <p id="msg">Aperte tocar e escute 220 anos de clima.</p>
   <div class="transport">
     <button id="play">▶ Tocar</button>
     <button id="mute" class="round" aria-pressed="false" aria-label="Silenciar tudo">🔊</button>
+    <button id="describe" class="round" aria-label="Descrever o que está na tela (tecla D)" title="Descrever (D)">🗣️</button>
     <span id="year" aria-hidden="true">1880</span>
     <label class="sr-only" for="slider">Ano</label>
     <input id="slider" type="range" min="1880" max="2100" value="1880">
-    <label class="loop"><input type="checkbox" id="loop"> Repetir</label>
+    <label class="loop" id="loop-label"><input type="checkbox" id="loop"> Repetir</label>
   </div>
 </footer>
 
@@ -131,6 +172,7 @@
 <script src="data/projections.js"></script>
 <script src="data/layers.js"></script>
 <script src="js/data.js"></script>
+<script src="js/vision.js"></script>
 <script src="js/audio.js"></script>
 <script src="js/chart.js"></script>
 <script src="js/main.js"></script>

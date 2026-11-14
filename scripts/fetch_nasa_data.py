@@ -12,6 +12,9 @@ Gera data/historical.js e data/projections.js a partir de:
   - CO2 ............... NASA GISS, arquivos GHG.CMIP6 por cenário (forçante do ModelE)
   - Temperatura ....... modelo climático da NASA GISS-E2.1-G (CMIP6, r1i1p1f2), média global de `tas`
   - Gelo do Ártico .... GISS-E2.1-G, extensão de setembro a partir de `siconca` (células >= 15%)
+  - Nível do mar ...... modelo semi-empírico (Rahmstorf 2007) dirigido pela temperatura anual de cada
+                        cenário e calibrado para atingir a mediana do NASA Sea Level Projection Tool
+                        (IPCC AR6) em 2100 — dá uma série anual coerente com a temperatura do cenário
 
 Uso:
     pip install -r scripts/requirements.txt     # netCDF4 + numpy (só para as projeções do modelo)
@@ -53,6 +56,11 @@ URL = {
     "giss_model": "https://portal.nccs.nasa.gov/datashare/giss_cmip6/{mip}/NASA-GISS/GISS-E2-1-G/"
                   "{exp}/r1i1p1f2/{table}/{var}/gn/{ver}/{var}_{table}_GISS-E2-1-G_{exp}_r1i1p1f2_gn_{period}.nc",
 }
+# Medianas AR6 do nível do mar em 2100 (mm vs. 1993), do NASA Sea Level Projection Tool.
+# ATENÇÃO: valores aproximados, ainda NÃO conferidos no arquivo oficial da ferramenta da NASA.
+# Substituir pelos números exportados do NASA Sea Level Projection Tool (mediana global).
+SEA_AR6_2100 = {"ssp126": 470, "ssp245": 590, "ssp585": 800}
+SEA_RATE_NOW = 4.5   # mm/ano, taxa observada atual (altimetria por satélite)
 MODEL_VER = {"historical": "v20190903", "ssp": "v20200115"}
 
 # ---------------------------------------------------------------- utilidades
@@ -241,6 +249,25 @@ def model_projections(temp_obs, ice_obs):
     return temp, ice, {"temp_anchor_shift_C": notes, "ice_bias_ratio": round(ice_ratio, 3)}
 
 
+def sea_projection(temp, sea_obs, anchor_2100):
+    """Série anual de nível do mar (mm vs. 1993) para um cenário.
+
+    dH/dt = r0 + a * (T(t) - T0): a taxa atual mais um termo proporcional ao aquecimento adicional.
+    `a` é resolvido para que H(2100) coincida com a mediana AR6 (`anchor_2100`).
+    """
+    y0 = max(y for y in sea_obs if y in temp)             # último ano com nível do mar observado
+    t0 = temp[y0]
+    years = range(y0 + 1, 2101)
+    d_temp = sum(temp[y] - t0 for y in years)
+    need = anchor_2100 - sea_obs[y0] - SEA_RATE_NOW * len(years)
+    a = need / d_temp if abs(d_temp) > 1e-6 else 0.0
+    out, h = {y0: sea_obs[y0]}, float(sea_obs[y0])
+    for y in years:
+        h += max(0.0, SEA_RATE_NOW + a * (temp[y] - t0))   # o mar não desce neste horizonte
+        out[y] = round(h)
+    return out
+
+
 # ---------------------------------------------------------------- escrita
 
 
@@ -267,6 +294,9 @@ def write_projections(p, sources):
         lines.append(f"  {ssp}: {{")
         lines.append(f"    label: {json.dumps(label, ensure_ascii=False)},")
         for k in ("temp", "co2", "ice", "sea"):
+            if not p[ssp].get(k):
+                print(f"AVISO: {ssp}/{k} sem dados — série omitida (o app precisa dela!)")
+                continue
             lines.append(f"    // {sources[k]}")
             lines.append(f"    {k}: {fmt_series(p[ssp][k])},")
         lines.append("  },")
@@ -316,11 +346,21 @@ def main():
         ps["ice"] = "NASA GISS-E2.1-G (CMIP6), extensão de setembro (siconca >= 15%); bias corrigido vs. GSFC 1979–2014"
         meta.update(m)
 
+    def do_sea_proj():
+        if not h.get("sea"):
+            raise RuntimeError("sem nível do mar observado")
+        for s_ in SCENARIOS:
+            if not p[s_].get("temp"):
+                raise RuntimeError(f"sem temperatura projetada para {s_}")
+            p[s_]["sea"] = sea_projection(p[s_]["temp"], h["sea"], SEA_AR6_2100[s_])
+        ps["sea"] = "Semi-empírico (Rahmstorf 2007) dirigido pela temperatura GISS; calibração de 2100 PENDENTE (valores AR6 aproximados)"
+
     step("temperatura observada (GISTEMP)", do_temp)
     step("CO2 observado + cenários (GISS)", do_co2)
     step("gelo do Ártico observado (GSFC)", do_ice)
     step("nível do mar observado (NASA-SSH)", do_sea)
     step("projeções de temperatura e gelo (modelo GISS-E2.1-G)", do_model)
+    step("projeção do nível do mar (semi-empírico + AR6)", do_sea_proj)
 
     for k in hs:
         if hs[k] == "?":

@@ -396,15 +396,21 @@ function init() {
   let curAtmo = 0.25;
   const COLD = new THREE.Color(0x3f7dff), HOT = new THREE.Color(0xff7a3c);
 
+  // (colega) Urbanização/eletrificação: curva logística (meados de 1960 = metade), normalizada
+  // para valer 1 em 2020. Continua subindo devagar nas projeções (até ~1,1 em 2100).
+  const logistic = y => 1 / (1 + Math.exp(-(y - 1965) / 22));
+  const L0 = logistic(1900), L1 = logistic(2020);
+
   function update(v) {
-    T.heat = clamp((v.temp + 0.5) / 3, 0, 1);
-    T.lights = clamp((v.year - 1900) / 110, 0, 1);
-    T.sea = clamp(v.sea / 800, 0, 1);                 // só a subida pós-1993 inunda
-    const A = (v.ice == null ? 7.8 : v.ice) * 1e12;   // m²
+    T.heat = EJ.level('temp', v.temp);                           // mesma curva do áudio (data.js)
+    T.lights = clamp((logistic(v.year) - L0) / (L1 - L0), 0, 1.25);
+    T.sea = clamp(v.sea / 800, 0, 1);                            // só a subida pós-1993 inunda
+    const A = (v.ice == null ? 7.8 : v.ice) * 1e12;              // m²
     T.iceEdge = THREE.MathUtils.radToDeg(Math.asin(clamp(1 - A / 2.551e14, -1, 1)));
-    T.atmo = clamp((v.co2 - 280) / 600, 0, 1);
+    T.atmo = EJ.level('co2', v.co2);
     T.year = v.year;
   }
+  let active = true;                                             // false no modo "imagem/vídeo"
 
   const clock = new THREE.Clock();
   function resize() {
@@ -417,6 +423,7 @@ function init() {
   renderer.setAnimationLoop(() => {
     const dt = Math.min(clock.getDelta(), 0.1);
     const k = 1 - Math.exp(-dt * 3.5);
+    if (!active) return;                                // modo imagem/vídeo: globo pausado
     if (layers.spin) earth.rotation.y += dt * 0.05;   // só gira se a rotação estiver ligada
     U.uHeat.value += (T.heat - U.uHeat.value) * k;
     U.uLights.value += (T.lights - U.uLights.value) * k;
@@ -461,6 +468,10 @@ function init() {
 
   EJ.globe = {
     update, layers,
-    toggle(name) { layers[name] = !layers[name]; return layers[name]; }
+    toggle(name) { layers[name] = !layers[name]; return layers[name]; },
+    // (colega) Renderiza agora e devolve o <canvas>: a visão (vision.js) lê os pixels do globo.
+    // A leitura precisa acontecer logo depois, na mesma tarefa.
+    frame() { if (!active) return null; renderer.render(scene, camera); return renderer.domElement; },
+    setActive(on) { active = on; container.style.visibility = on ? '' : 'hidden'; }
   };
 }

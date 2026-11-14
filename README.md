@@ -43,6 +43,12 @@ Clique num card para ouvir **só aquele instrumento** (solo); o 🔊 de cada car
 
 Projeções em três cenários SSP (SSP1-2.6, SSP2-4.5, SSP5-8.5), calculadas a partir do modelo climático da própria NASA (GISS-E2.1-G, CMIP6). Detalhes na seção **Dados**. No gráfico, a projeção aparece tracejada; o ano fica laranja.
 
+### Ouvir imagens (visão computacional)
+
+O `js/vision.js` "olha" um quadro e transforma em música: **cor** → acorde, **brilho** → timbre, **pontos brilhantes** → arpejo, **bordas** → chimbal, **movimento** → golpes graves. No globo, ele lê o próprio quadro desenhado (gire a Terra ou ligue camadas e a música muda). Em **Instrumentos → Ouvir uma imagem** dá para abrir qualquer imagem ou vídeo do NASA Earth Information Center / Scientific Visualization Studio, escolher um perfil de som, **varrer** a imagem da esquerda para a direita e **gravar** o áudio.
+
+Acessibilidade: o botão 🗣️ (tecla **D**) descreve em texto tudo o que está na tela — ano, valores, harmonia, camadas ligadas e o que a imagem mostra. Atalhos: Espaço, ← →, S, D, M.
+
 ## Estrutura
 
 ```
@@ -52,7 +58,9 @@ css/style.css               estilos
 js/globe.js                 globo 3D (three.js + shaders das camadas)
 js/audio.js                 motor de áudio (Web Audio), uma camada por dado
 js/chart.js                 gráfico 2D das séries
-js/data.js                  junta histórico e projeção, interpolação por ano
+js/data.js                  junta histórico e projeção (interpolação PCHIP, emenda suave)
+js/vision.js                visão computacional: imagem → características musicais
+tests/                      testes automáticos (node --test tests/)
 js/main.js                  interface e controles
 js/vendor/                  three.js + OrbitControls (empacotados p/ funcionar offline)
 data/historical.js          séries observadas (GERADO pelo script)
@@ -86,7 +94,7 @@ Depois do último ano observado de cada série, o app usa a projeção do cenár
 | CO₂ | NASA GISS, `GHG.CMIP6.2015-2500.<cenário>.txt` | Concentrações usadas como forçante do modelo da NASA |
 | Temperatura | [GISS-E2.1-G](https://data.giss.nasa.gov/modelE/cmip6/) (CMIP6, membro r1i1p1f2), variável `tas`, via [NCCS](https://portal.nccs.nasa.gov/datashare/giss_cmip6/) | Média global ponderada por área; anomalia vs. 1951–1980 do próprio modelo; ancorada à média GISTEMP 2015–2024 (ajuste < 0,02 °C) |
 | Gelo do Ártico | GISS-E2.1-G, variável `siconca` | Extensão de setembro (células ≥ 15%); viés corrigido pela razão GSFC/modelo em 1979–2014 (fator 0,62) |
-| Nível do mar | NASA Sea Level Projection Tool (IPCC AR6) | **pendente** |
+| Nível do mar | Modelo semi-empírico (Rahmstorf 2007) dirigido pela temperatura GISS | Calibração de 2100 **pendente**: valores AR6 aproximados até conferirmos no NASA Sea Level Projection Tool |
 
 **Limitações (importante para a apresentação):**
 - Projeções de um único modelo e um único membro: a variabilidade ano a ano é real do modelo, não uma previsão de cada ano.

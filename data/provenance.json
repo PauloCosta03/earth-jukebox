@@ -10,7 +10,7 @@
     "temp": "NASA GISS-E2.1-G (CMIP6), média global de tas; ancorado à média GISTEMP 2015–2024",
     "co2": "NASA GISS, GHG.CMIP6 por cenário (ppm)",
     "ice": "NASA GISS-E2.1-G (CMIP6), extensão de setembro (siconca >= 15%); bias corrigido vs. GSFC 1979–2014",
-    "sea": "PENDENTE — valores anteriores mantidos (ver README, seção Dados)"
+    "sea": "Semi-empírico (Rahmstorf 2007) dirigido pela temperatura GISS; calibração de 2100 PENDENTE (valores AR6 aproximados)"
   },
   "adjustments": {
     "temp_anchor_shift_C": {

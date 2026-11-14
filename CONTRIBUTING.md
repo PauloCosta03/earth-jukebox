@@ -24,6 +24,8 @@ Ninguém faz commit direto na `main`.
 | Quero mudar... | Arquivo |
 |---|---|
 | Sons e instrumentos | `js/audio.js` |
+| Leitura de imagem (visão) | `js/vision.js` |
+| Testes | `tests/` (rodar: `node --test tests/`) |
 | Globo 3D e shaders | `js/globe.js` |
 | Gráfico 2D | `js/chart.js` |
 | Botões, textos e eventos | `js/main.js`, `index.html` |
