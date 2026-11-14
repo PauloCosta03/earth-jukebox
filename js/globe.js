@@ -201,7 +201,7 @@ function init() {
   scene.add(atmo);
 
   // ---------- estado e alvos (interpolados p/ transições suaves) ----------
-  const layers = { lights: true, sea: true, ice: true, heat: false };
+  const layers = { lights: true, sea: true, ice: true, heat: false, spin: true };
   const T = { heat: 0, lights: 0, sea: 0, iceEdge: 76, atmo: 0.25 };
   let curAtmo = 0.25;
   const COLD = new THREE.Color(0x3f7dff), HOT = new THREE.Color(0xff7a3c);
@@ -226,7 +226,7 @@ function init() {
   renderer.setAnimationLoop(() => {
     const dt = Math.min(clock.getDelta(), 0.1);
     const k = 1 - Math.exp(-dt * 3.5);
-    earth.rotation.y += dt * 0.05;
+    if (layers.spin) earth.rotation.y += dt * 0.05;   // só gira se a rotação estiver ligada
     U.uHeat.value += (T.heat - U.uHeat.value) * k;
     U.uLights.value += (T.lights - U.uLights.value) * k;
     U.uSea.value += (T.sea - U.uSea.value) * k;
