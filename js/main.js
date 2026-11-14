@@ -38,6 +38,9 @@
     EJ.LAYERS.forEach(k => ($('v-' + k).textContent = fmt[k](v[k])));
     const ev = Object.keys(events).map(Number).filter(k => k <= y).pop();
     if (ev) msg.textContent = `${ev}: ${events[ev]}`;
+    // texto que o leitor de tela fala ao mexer no controle de ano
+    slider.setAttribute('aria-valuetext',
+      `${y}${v.projected ? ' (projeção)' : ''}, temperatura ${fmt.temp(v.temp)}`);
     EJ.chart.draw(y);
     if (EJ.globe) EJ.globe.update(v);
     if (sound) EJ.audio.play(v);
@@ -45,10 +48,11 @@
 
   function refreshCards() {
     document.querySelectorAll('.card').forEach(c => {
-      const k = c.dataset.layer, s = EJ.audio.state;
-      c.classList.toggle('solo', s.solo === k);
+      const k = c.dataset.layer, s = EJ.audio.state, mute = c.querySelector('.mute-layer');
+      c.querySelector('.solo').setAttribute('aria-pressed', s.solo === k);   // "solo ligado/desligado"
       c.classList.toggle('off', !EJ.audio.audible(k));
-      c.querySelector('.mute-layer').textContent = s.off.has(k) ? '🔇' : '🔊';
+      mute.setAttribute('aria-pressed', s.off.has(k));                       // "silenciado ou não"
+      mute.textContent = s.off.has(k) ? '🔇' : '🔊';
     });
     EJ.chart.draw(+slider.value);
   }
@@ -67,26 +71,51 @@
     }, 260);
   };
 
-  $('mute').onclick = e => { e.target.textContent = EJ.audio.toggleMute() ? '🔇' : '🔊'; };
+  $('mute').onclick = e => {
+    const m = EJ.audio.toggleMute();
+    e.currentTarget.textContent = m ? '🔇' : '🔊';
+    e.currentTarget.setAttribute('aria-pressed', m);
+  };
   $('scenario').onchange = e => { EJ.scenario = e.target.value; render(+slider.value, false); };
   slider.oninput = () => { EJ.audio.init(); render(+slider.value); };
 
   // cards = camadas de ÁUDIO (clique: solo · alto-falante: liga/desliga)
   document.querySelectorAll('.card').forEach(card => {
     const k = card.dataset.layer;
-    card.onclick = () => { EJ.audio.init(); EJ.audio.toggleSolo(k); refreshCards(); };
-    card.querySelector('.mute-layer').onclick = e => { e.stopPropagation(); EJ.audio.toggleLayer(k); refreshCards(); };
+    card.querySelector('.solo').onclick = () => { EJ.audio.init(); EJ.audio.toggleSolo(k); refreshCards(); };
+    card.querySelector('.mute-layer').onclick = () => { EJ.audio.toggleLayer(k); refreshCards(); };
   });
 
-  // chips = camadas VISUAIS do globo
-  document.querySelectorAll('.chip[data-viz]').forEach(ch => {
-    ch.onclick = () => { if (EJ.globe) ch.classList.toggle('on', EJ.globe.toggle(ch.dataset.viz)); };
+  // chips = camadas VISUAIS do globo; aria-pressed faz o leitor de tela dizer "ligado/desligado"
+  const chips = document.querySelectorAll('.chip[data-viz]');
+  const syncChips = () => chips.forEach(ch => ch.setAttribute('aria-pressed', !!EJ.globe.layers[ch.dataset.viz]));
+  chips.forEach(ch => {
+    ch.onclick = () => { if (EJ.globe) { EJ.globe.toggle(ch.dataset.viz); syncChips(); } };
   });
-  $('about-btn').onclick = () => $('about').classList.toggle('open');
+
+  // ---------- caixinhas: um botão abre, o mesmo botão (ou Esc) fecha; só uma aberta por vez ----------
+  const tools = document.querySelectorAll('.tool');
+  function setOpen(btn, open) {
+    const panel = $(btn.getAttribute('aria-controls'));
+    btn.setAttribute('aria-expanded', open);   // leitor de tela anuncia "expandido/recolhido"
+    panel.hidden = !open;
+    if (open && panel.id === 'p-sound') EJ.chart.draw(+slider.value);  // o gráfico só tem tamanho visível
+  }
+  tools.forEach(btn => btn.onclick = () => {
+    const open = btn.getAttribute('aria-expanded') !== 'true';
+    tools.forEach(b => setOpen(b, false));
+    setOpen(btn, open);
+  });
+  addEventListener('keydown', e => {
+    if (e.key !== 'Escape') return;
+    const openBtn = [...tools].find(b => b.getAttribute('aria-expanded') === 'true');
+    if (openBtn) { setOpen(openBtn, false); openBtn.focus(); }      // devolve o foco ao botão
+  });
 
   addEventListener('ej-globe-ready', () => {
-    document.querySelectorAll('.chip[data-viz]').forEach(ch =>
-      ch.classList.toggle('on', EJ.globe.layers[ch.dataset.viz]));
+    // Quem pediu ao sistema "reduzir movimento" recebe a Terra parada (pode ligar em Camadas)
+    if (matchMedia('(prefers-reduced-motion: reduce)').matches && EJ.globe.layers.spin) EJ.globe.toggle('spin');
+    syncChips();
     render(+slider.value, false);
   });
   addEventListener('resize', () => EJ.chart.draw(+slider.value));

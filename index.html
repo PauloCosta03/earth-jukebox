@@ -11,79 +11,125 @@
 <script type="importmap">{"imports":{"three":"./js/vendor/three.module.min.js"}}</script>
 </head>
 <body>
-<div id="globe" aria-hidden="true"></div>
-<div id="loading"><div class="spin"></div><p>Carregando a Terra…</p></div>
+<!-- Atalho para quem navega por teclado/leitor de tela pular direto para os controles -->
+<a class="skip" href="#play">Pular para os controles de reprodução</a>
 
-<header class="panel top">
-  <div class="brand">
-    <h1>EARTH JUKEBOX</h1>
-    <p>A música do clima · dados NASA · 1880–2100</p>
-  </div>
-  <div class="viz">
-    <select id="scenario" aria-label="Cenário futuro">
-      <option value="ssp126">SSP1-2.6 · Emissões baixas</option>
-      <option value="ssp245" selected>SSP2-4.5 · Intermediário</option>
-      <option value="ssp585">SSP5-8.5 · Muito altas</option>
-    </select>
-    <button class="chip" data-viz="lights">🌃 Luzes</button>
-    <button class="chip" data-viz="sea">🌊 Inundação</button>
-    <button class="chip" data-viz="ice">🧊 Gelo</button>
-    <button class="chip" data-viz="heat">🌡️ Calor</button>
-    <button id="about-btn" class="chip" aria-label="Dados e créditos">ℹ️</button>
-  </div>
+<div id="globe" role="img" aria-label="Globo 3D da Terra mostrando as camadas de dados climáticos selecionadas"></div>
+<div id="loading" role="status"><div class="spin" aria-hidden="true"></div><p>Carregando a Terra…</p></div>
+
+<header class="topbar">
+  <h1 class="brand panel">EARTH JUKEBOX</h1>
+
+  <!-- Cada botão abre/fecha a sua caixinha (aria-expanded diz ao leitor de tela se está aberta) -->
+  <nav class="toolbar panel" aria-label="Menus">
+    <button class="tool" aria-expanded="false" aria-controls="p-layers" aria-label="Camadas">🗺️ <span>Camadas</span></button>
+    <button class="tool" aria-expanded="false" aria-controls="p-sound" aria-label="Instrumentos">🎵 <span>Instrumentos</span></button>
+    <button class="tool" aria-expanded="false" aria-controls="p-about" aria-label="Sobre">ℹ️ <span>Sobre</span></button>
+  </nav>
 </header>
 
-<section id="about" class="panel">
-  <h2>Dados e créditos</h2>
-  <ul>
-    <li>Temperatura: <a href="https://data.giss.nasa.gov/gistemp/" target="_blank">NASA GISTEMP v4</a></li>
-    <li>CO₂: <a href="https://gml.noaa.gov/ccgg/trends/" target="_blank">NOAA Mauna Loa</a> + núcleos de gelo</li>
-    <li>Gelo do Ártico: <a href="https://nsidc.org/data/g02135" target="_blank">NSIDC Sea Ice Index</a></li>
-    <li>Nível do mar: <a href="https://climate.nasa.gov/vital-signs/sea-level/" target="_blank">NASA Sea Level</a></li>
-    <li>Projeções: <a href="https://sealevel.nasa.gov/ipcc-ar6-sea-level-projection-tool" target="_blank">NASA/IPCC AR6</a>, NEX-GDDP-CMIP6</li>
-    <li>Texturas: NASA Blue Marble &amp; Black Marble · 3D: three.js</li>
-  </ul>
-  <p class="note">A inundação e a borda do gelo usam relevo e extensão reais, com exagero visual para leitura em escala global. Projeções são medianas aproximadas por cenário SSP.</p>
+<!-- ============ CAIXINHA: CAMADAS ============ -->
+<section id="p-layers" class="drawer panel" role="region" aria-labelledby="h-layers" hidden>
+  <h2 id="h-layers">Camadas do globo</h2>
+  <label class="field">Cenário do futuro
+    <select id="scenario">
+      <option value="ssp126">SSP1-2.6 · Emissões baixas</option>
+      <option value="ssp245" selected>SSP2-4.5 · Intermediário</option>
+      <option value="ssp585">SSP5-8.5 · Emissões muito altas</option>
+    </select>
+  </label>
+  <!-- aria-pressed: o leitor de tela anuncia "ligado"/"desligado" em cada camada -->
+  <div class="chips" role="group" aria-label="Ligar ou desligar camadas">
+    <button class="chip" data-viz="lights" aria-pressed="false">🌃 Luzes das cidades</button>
+    <button class="chip" data-viz="sea" aria-pressed="false">🌊 Inundação</button>
+    <button class="chip" data-viz="ice" aria-pressed="false">🧊 Gelo do Ártico</button>
+    <button class="chip" data-viz="heat" aria-pressed="false">🌡️ Mapa de calor</button>
+    <button class="chip" data-viz="clouds" aria-pressed="false">☁️ Nuvens</button>
+    <button class="chip" data-viz="ndvi" aria-pressed="false">🌿 Vegetação</button>
+    <button class="chip" data-viz="fire" aria-pressed="false">🔥 Queimadas</button>
+    <button class="chip" data-viz="wind" aria-pressed="false">🌬️ Ventos</button>
+    <button class="chip" data-viz="ozone" aria-pressed="false">🛡️ Ozônio</button>
+    <button class="chip" data-viz="spin" aria-pressed="false">🔄 Girar a Terra</button>
+  </div>
 </section>
 
-<aside id="cards" class="panel">
-  <div class="card" data-layer="temp" style="--c:var(--temp)">
-    <button class="mute-layer" aria-label="Silenciar temperatura">🔊</button>
-    <div class="lbl">Temperatura</div><div class="val" id="v-temp">–</div>
-    <div class="snd">🎹 melodia: aguda e dissonante no calor</div>
+<!-- ============ CAIXINHA: INSTRUMENTOS (valores + áudio) ============ -->
+<section id="p-sound" class="drawer panel" role="region" aria-labelledby="h-sound" hidden>
+  <h2 id="h-sound">Instrumentos</h2>
+  <p class="note">Toque num instrumento para ouvir só ele. O alto-falante liga ou desliga cada um.</p>
+  <div class="cards">
+    <div class="card" data-layer="temp" style="--c:var(--temp)">
+      <button class="solo" aria-pressed="false">
+        <span class="lbl">🎹 Temperatura</span><span class="val" id="v-temp">–</span>
+        <span class="snd">melodia: aguda e dissonante no calor</span>
+      </button>
+      <button class="mute-layer" aria-pressed="false" aria-label="Silenciar temperatura">🔊</button>
+    </div>
+    <div class="card" data-layer="co2" style="--c:var(--co2)">
+      <button class="solo" aria-pressed="false">
+        <span class="lbl">🌫️ CO₂</span><span class="val" id="v-co2">–</span>
+        <span class="snd">drone: distorce com mais CO₂</span>
+      </button>
+      <button class="mute-layer" aria-pressed="false" aria-label="Silenciar CO₂">🔊</button>
+    </div>
+    <div class="card" data-layer="ice" style="--c:var(--ice)">
+      <button class="solo" aria-pressed="false">
+        <span class="lbl">🔔 Gelo do Ártico</span><span class="val" id="v-ice">–</span>
+        <span class="snd">sinos: somem com o degelo</span>
+      </button>
+      <button class="mute-layer" aria-pressed="false" aria-label="Silenciar gelo do Ártico">🔊</button>
+    </div>
+    <div class="card" data-layer="sea" style="--c:var(--sea)">
+      <button class="solo" aria-pressed="false">
+        <span class="lbl">🌊 Nível do mar</span><span class="val" id="v-sea">–</span>
+        <span class="snd">ondas: crescem com o mar</span>
+      </button>
+      <button class="mute-layer" aria-pressed="false" aria-label="Silenciar nível do mar">🔊</button>
+    </div>
   </div>
-  <div class="card" data-layer="co2" style="--c:var(--co2)">
-    <button class="mute-layer" aria-label="Silenciar CO2">🔊</button>
-    <div class="lbl">CO₂</div><div class="val" id="v-co2">–</div>
-    <div class="snd">🌫️ drone: distorce com mais CO₂</div>
-  </div>
-  <div class="card" data-layer="ice" style="--c:var(--ice)">
-    <button class="mute-layer" aria-label="Silenciar gelo">🔊</button>
-    <div class="lbl">Gelo do Ártico</div><div class="val" id="v-ice">–</div>
-    <div class="snd">🔔 sinos: somem com o degelo</div>
-  </div>
-  <div class="card" data-layer="sea" style="--c:var(--sea)">
-    <button class="mute-layer" aria-label="Silenciar nível do mar">🔊</button>
-    <div class="lbl">Nível do mar</div><div class="val" id="v-sea">–</div>
-    <div class="snd">🌊 ondas: crescem com o mar</div>
-  </div>
-</aside>
+  <canvas id="chart" aria-label="Gráfico das quatro séries ao longo do tempo" role="img"></canvas>
+</section>
 
-<footer class="panel bottom">
-  <div id="msg">Aperte play e escute 220 anos de clima.</div>
+<!-- ============ CAIXINHA: SOBRE ============ -->
+<section id="p-about" class="drawer panel" role="region" aria-labelledby="h-about" hidden>
+  <h2 id="h-about">Sobre</h2>
+  <p>A música do clima: dados da NASA de 1880 a 2100 viram instrumentos e camadas sobre a Terra.</p>
+  <h3>Como usar</h3>
+  <ul>
+    <li>Arraste a Terra para girar e role para aproximar.</li>
+    <li>Teclado: <kbd>Tab</kbd> navega, <kbd>Enter</kbd> ativa, <kbd>Esc</kbd> fecha a caixinha aberta.</li>
+    <li>No controle de ano, as setas avançam um ano por vez.</li>
+  </ul>
+  <h3>Dados e créditos</h3>
+  <ul>
+    <li>Temperatura: <a href="https://data.giss.nasa.gov/gistemp/" target="_blank" rel="noopener">NASA GISTEMP v4</a></li>
+    <li>CO₂: <a href="https://portal.nccs.nasa.gov/GISS_modelE/modelE_input_data/" target="_blank" rel="noopener">NASA GISS</a> (concentrações CMIP6)</li>
+    <li>Gelo do Ártico: <a href="https://earth.gsfc.nasa.gov/cryo/data/arcticantarctic-sea-ice-time-series" target="_blank" rel="noopener">NASA GSFC</a></li>
+    <li>Nível do mar: <a href="https://podaac.jpl.nasa.gov/dataset/NASA_SSH_GMSL_INDICATOR" target="_blank" rel="noopener">NASA-SSH</a> (em integração)</li>
+    <li>Projeções: modelo climático <a href="https://data.giss.nasa.gov/modelE/cmip6/" target="_blank" rel="noopener">NASA GISS-E2.1-G</a> (CMIP6)</li>
+    <li>Camadas: <a href="https://www.earthdata.nasa.gov/engage/open-data-services-software/earthdata-developer-portal/gibs-api" target="_blank" rel="noopener">NASA GIBS</a> (nuvens VIIRS, vegetação e queimadas MODIS), mapa GISTEMP, ventos GISS-E2.1-G, ozônio <a href="https://ozonewatch.gsfc.nasa.gov" target="_blank" rel="noopener">NASA Ozone Watch</a></li>
+    <li>Texturas: NASA Blue Marble &amp; Black Marble · 3D: three.js</li>
+  </ul>
+  <p class="note">A inundação e a borda do gelo usam relevo e extensão reais, com exagero visual para leitura em escala global. Projeções de uma simulação do modelo da NASA por cenário SSP; detalhes e ajustes no README.</p>
+</section>
+
+<!-- ============ BARRA DE REPRODUÇÃO (sempre visível, compacta) ============ -->
+<footer class="player panel">
+  <!-- aria-live: o leitor de tela lê os acontecimentos históricos quando mudam -->
+  <p id="msg" aria-live="polite">Aperte tocar e escute 220 anos de clima.</p>
   <div class="transport">
     <button id="play">▶ Tocar</button>
-    <button id="mute" class="sec" aria-label="Som">🔊</button>
-    <span id="year">1880</span>
-    <input id="slider" type="range" min="1880" max="2100" value="1880" aria-label="Ano">
-    <label class="loop"><input type="checkbox" id="loop"> loop</label>
+    <button id="mute" class="round" aria-pressed="false" aria-label="Silenciar tudo">🔊</button>
+    <span id="year" aria-hidden="true">1880</span>
+    <label class="sr-only" for="slider">Ano</label>
+    <input id="slider" type="range" min="1880" max="2100" value="1880">
+    <label class="loop"><input type="checkbox" id="loop"> Repetir</label>
   </div>
-  <canvas id="chart"></canvas>
-  <p class="hint">Arraste para girar · role para aproximar · clique num card para ouvir só aquele instrumento · chips ligam camadas do globo</p>
 </footer>
 
 <script src="data/historical.js"></script>
 <script src="data/projections.js"></script>
+<script src="data/layers.js"></script>
 <script src="js/data.js"></script>
 <script src="js/audio.js"></script>
 <script src="js/chart.js"></script>
