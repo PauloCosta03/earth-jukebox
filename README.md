@@ -52,3 +52,7 @@ O script usa só a biblioteca padrão do Python. Se uma fonte falhar, os valores
 - NASA Sea Level: https://climate.nasa.gov/vital-signs/sea-level/
 - NASA Sea Level Projection Tool (IPCC AR6): https://sealevel.nasa.gov/ipcc-ar6-sea-level-projection-tool
 - NASA NEX-GDDP-CMIP6: https://www.nccs.nasa.gov/services/data-collections/land-based-products/nex-gddp-cmip6
+
+## Equipe e contribuição
+
+Quer ajudar? Leia o [CONTRIBUTING.md](CONTRIBUTING.md). Licença: [MIT](LICENSE).
