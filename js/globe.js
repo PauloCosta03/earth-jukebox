@@ -89,7 +89,7 @@ function init() {
     t.minFilter = THREE.LinearFilter;
     return { tex: t, grid: new THREE.Vector4(m.cols || 1, m.rows || 1, m.frameW || 1, m.frameH || 1), meta: m };
   };
-  const A = { temp: atlas('temp'), ndvi: atlas('ndvi', true), fire: atlas('fire') };
+  const A = { temp: atlas('temp'), ndvi: atlas('ndvi', true), fire: atlas('fire'), ozone: atlas('ozone') };
 
   const SUN = new THREE.Vector3(4, 1.4, 2.2).normalize();
   const U = {
@@ -110,7 +110,9 @@ function init() {
     uNdviTex: { value: A.ndvi.tex }, uNdviGrid: { value: A.ndvi.grid }, uNdviF: { value: new THREE.Vector3() },
     uNdviOn: { value: 0 },
     uFireTex: { value: A.fire.tex }, uFireGrid: { value: A.fire.grid }, uFireF: { value: new THREE.Vector3() },
-    uFireOn: { value: 0 }
+    uFireOn: { value: 0 },
+    uOzoneTex: { value: A.ozone.tex }, uOzoneGrid: { value: A.ozone.grid }, uOzoneF: { value: new THREE.Vector3() },
+    uOzoneOn: { value: 0 }
   };
 
   const VERT = /* glsl */`
@@ -127,10 +129,10 @@ function init() {
     uniform sampler2D uDay, uNight, uTopo, uWater;
     uniform vec3 uSunDir, uAtmoColor;
     uniform float uHeat, uHeatOn, uLights, uLightsOn, uSea, uSeaOn, uIceEdge, uIceOn;
-    uniform float uTime, uNdviOn, uFireOn;
-    uniform sampler2D uTempTex, uNdviTex, uFireTex;
-    uniform vec4 uTempGrid, uNdviGrid, uFireGrid;
-    uniform vec3 uTempF, uNdviF, uFireF;
+    uniform float uTime, uNdviOn, uFireOn, uOzoneOn;
+    uniform sampler2D uTempTex, uNdviTex, uFireTex, uOzoneTex;
+    uniform vec4 uTempGrid, uNdviGrid, uFireGrid, uOzoneGrid;
+    uniform vec3 uTempF, uNdviF, uFireF, uOzoneF;
     varying vec2 vUv; varying vec3 vN; varying vec3 vPos;
 
     // Coordenada dentro do atlas para o quadro 'frame' (quadros contados da esquerda
@@ -220,6 +222,14 @@ function init() {
       float flicker = 0.75 + 0.25 * sin(uTime * 7.0 + hash(floor(vUv * 720.0)) * 30.0);
       col += vec3(1.0, 0.42, 0.08) * fire * flicker * uFireOn * 1.6;
 
+      // --- 🛡️ buraco de ozônio: onde a coluna fica abaixo de ~300 DU aparece roxo/azul
+      //     (abaixo de 220 DU é a definição oficial de "buraco"). Visível de dia e de noite.
+      float ozRaw = atlas(uOzoneTex, uOzoneGrid, uOzoneF).r;
+      float du = (ozRaw * 255.0 - 1.0) / 254.0 * 400.0 + 100.0;      // decodifica 1..255 -> 100..500 DU
+      float hole = smoothstep(310.0, 220.0, du) * step(0.5 / 255.0, ozRaw);
+      vec3 ozCol = mix(vec3(0.20, 0.45, 1.0), vec3(0.55, 0.10, 0.85), smoothstep(260.0, 150.0, du));
+      col = mix(col, ozCol, hole * 0.8 * uOzoneOn);
+
       // --- halo atmosférico na borda
       col += uAtmoColor * pow(1.0 - max(dot(n, viewDir), 0.0), 3.5) * (0.22 + uHeat * 0.18);
 
@@ -261,17 +271,20 @@ function init() {
   scene.add(atmo);
 
   // ---------- ☁️ nuvens: segunda esfera, um pouco maior, que deriva devagar ----------
-  const cloudU = { uCloud: { value: L.clouds ? loader.load(L.clouds.image) : null },
-                   uSunDir: { value: SUN }, uOn: { value: 1 } };
+  // 16 dias seguidos de nuvens reais: mostra o dia A misturando com o dia B (uMix), em loop
+  const cloudTex = L.clouds ? (L.clouds.images || [L.clouds.image]).map(p => loader.load(p)) : [];
+  const cloudU = { uCloudA: { value: cloudTex[0] || null }, uCloudB: { value: cloudTex[1] || cloudTex[0] || null },
+                   uMix: { value: 0 }, uSunDir: { value: SUN }, uOn: { value: 1 } };
+  let cloudT = 0;                                                // "relógio" das nuvens, em dias
   const clouds = new THREE.Mesh(
     new THREE.SphereGeometry(1.012, 96, 96),
     new THREE.ShaderMaterial({
       uniforms: cloudU, vertexShader: VERT, transparent: true, depthWrite: false,
       fragmentShader: /* glsl */`
-        uniform sampler2D uCloud; uniform vec3 uSunDir; uniform float uOn;
+        uniform sampler2D uCloudA, uCloudB; uniform vec3 uSunDir; uniform float uOn, uMix;
         varying vec2 vUv; varying vec3 vN;
         void main(){
-          float a = texture2D(uCloud, vUv).r;                       // 0 = céu limpo, 1 = nuvem densa
+          float a = mix(texture2D(uCloudA, vUv).r, texture2D(uCloudB, vUv).r, uMix);  // 0 = céu limpo, 1 = nuvem densa
           float lit = clamp(dot(normalize(vN), normalize(uSunDir)) * 1.6 + 0.12, 0.0, 1.0);
           gl_FragColor = vec4(vec3(lit * 1.02 + 0.03), a * uOn * 0.92);  // de noite fica escura
           #include <tonemapping_fragment>
@@ -375,10 +388,10 @@ function init() {
 
   // ---------- estado e alvos (interpolados p/ transições suaves) ----------
   const layers = { lights: true, sea: true, ice: true, heat: false, spin: true,
-                   clouds: true, ndvi: false, fire: false, wind: false };
+                   clouds: true, ndvi: false, fire: false, wind: false, ozone: false };
   const T = { heat: 0, lights: 0, sea: 0, iceEdge: 76, atmo: 0.25, year: EJ.YEAR_MIN };
   let yearCur = EJ.YEAR_MIN;                                     // ano que desliza suavemente até T.year
-  const on = { ndvi: 0, fire: 0, wind: 0, heat: 0 };            // disponibilidade × botão, suavizados
+  const on = { ndvi: 0, fire: 0, wind: 0, heat: 0, ozone: 0 };  // disponibilidade × botão, suavizados
   let curAtmo = 0.25;
   const COLD = new THREE.Color(0x3f7dff), HOT = new THREE.Color(0xff7a3c);
 
@@ -418,9 +431,21 @@ function init() {
     on.ndvi += ((layers.ndvi && fN.ok ? 1 : 0) - on.ndvi) * k;
     on.fire += ((layers.fire && fF.ok ? 1 : 0) - on.fire) * k;
     on.wind += ((layers.wind && fW.ok ? 1 : 0) - on.wind) * k;
-    U.uHeatOn.value = on.heat; U.uNdviOn.value = on.ndvi; U.uFireOn.value = on.fire;
+    const fO = frames(A.ozone.meta, yearCur);
+    U.uOzoneF.value.set(...fO.F);
+    on.ozone += ((layers.ozone && fO.ok ? 1 : 0) - on.ozone) * k;
+    U.uHeatOn.value = on.heat; U.uNdviOn.value = on.ndvi; U.uFireOn.value = on.fire; U.uOzoneOn.value = on.ozone;
     cloudU.uOn.value += ((layers.clouds ? 1 : 0) - cloudU.uOn.value) * k;
-    if (layers.spin) clouds.rotation.y += dt * 0.057;           // nuvens um pouco mais rápidas que a Terra
+    if (layers.spin) {                                          // com a Terra parada, as nuvens também param
+      clouds.rotation.y += dt * 0.057;                          // nuvens um pouco mais rápidas que a Terra
+      cloudT += dt / 1.5;                                       // 1 dia de nuvens a cada 1,5 s
+      if (cloudTex.length > 1) {
+        const n = cloudTex.length, i = Math.floor(cloudT) % n, f = cloudT - Math.floor(cloudT);
+        cloudU.uCloudA.value = cloudTex[i];
+        cloudU.uCloudB.value = cloudTex[(i + 1) % n];
+        cloudU.uMix.value = f * f * (3 - 2 * f);                // transição suave (smoothstep)
+      }
+    }
     if (wind) wind.step(dt, fW.F, on.wind * 0.9);
     U.uTime.value += dt;
     U.uLightsOn.value += ((layers.lights ? 1 : 0) - U.uLightsOn.value) * k;

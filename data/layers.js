@@ -44,5 +44,21 @@ window.EJ_LAYERS = {
   ],
   "smoothing": "média móvel de 5 anos",
   "source": "NASA GISTEMP v4 (1200 km) até 2025; modelo NASA GISS-E2.1-G depois"
+ },
+ "ndvi": {
+  "atlas": "assets/layers/ndvi.png",
+  "cols": 5,
+  "rows": 5,
+  "frameW": 720,
+  "frameH": 360,
+  "frames": {
+   "hist": [
+    2001,
+    2025,
+    0,
+    1
+   ]
+  },
+  "source": "NASA GIBS — MODIS Terra L3 NDVI mensal (média anual)"
  }
 };

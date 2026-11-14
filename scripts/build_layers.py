@@ -23,6 +23,7 @@ import json
 import math
 import shutil
 import sys
+import time
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -54,10 +55,25 @@ def download(url, dest):
         return dest
     tmp = dest.with_suffix(dest.suffix + ".part")
     req = urllib.request.Request(url, headers=UA)
-    with urllib.request.urlopen(req, timeout=300) as r, open(tmp, "wb") as f:
-        shutil.copyfileobj(r, f, 1 << 20)
+    for attempt in range(4):                     # servidores às vezes derrubam a conexão: tenta de novo
+        try:
+            with urllib.request.urlopen(req, timeout=300) as r, open(tmp, "wb") as f:
+                shutil.copyfileobj(r, f, 1 << 20)
+            break
+        except OSError:
+            if attempt == 3:
+                raise
+            time.sleep(3 * (attempt + 1))
     tmp.replace(dest)
     return dest
+
+
+def open_png(path):
+    """Abre uma imagem baixada; devolve None se o servidor mandou algo que não é imagem."""
+    try:
+        return Image.open(path).convert("RGBA")
+    except Exception:  # noqa: BLE001
+        return None
 
 
 def download_many(jobs, label):
@@ -123,16 +139,37 @@ def encode(field, lo, hi):
 # ------------------------------------------------------------------ camadas
 
 
+CLOUD_DAYS = 16                                     # dias seguidos de nuvens reais (animação)
+
+
 def build_clouds():
-    print("☁️  nuvens (VIIRS cor real, equinócio 2024-03-20)")
-    imgs = []
-    for layer in ("VIIRS_SNPP_CorrectedReflectance_TrueColor", "VIIRS_NOAA20_CorrectedReflectance_TrueColor"):
-        dest = CACHE / "gibs" / f"{layer}_2024-03-20.jpg"
-        download(GIBS_WMS.format(w=4096, h=2048, fmt="image/jpeg", layer=layer, time="2024-03-20"), dest)
-        imgs.append(np.asarray(Image.open(dest).convert("RGB")).astype("f4") / 255)
+    import datetime as dt
+    print(f"☁️  nuvens (VIIRS cor real, {CLOUD_DAYS} dias seguidos a partir de 2024-03-13)")
+    days = [dt.date(2024, 3, 13) + dt.timedelta(days=i) for i in range(CLOUD_DAYS)]
+    sats = ("VIIRS_SNPP_CorrectedReflectance_TrueColor", "VIIRS_NOAA20_CorrectedReflectance_TrueColor")
+    download_many([(GIBS_WMS.format(w=2048, h=1024, fmt="image/jpeg", layer=s, time=d),
+                    CACHE / "gibs" / "clouds" / f"{s}_{d}.jpg") for d in days for s in sats], "nuvens")
     # Superfície sem nuvens (Blue Marble): o que já é claro nela (gelo, neve, deserto) não é nuvem.
-    bm = Image.open(ROOT / "assets" / "textures" / "earth-day.jpg").convert("RGB").resize((4096, 2048))
+    bm = Image.open(ROOT / "assets" / "textures" / "earth-day.jpg").convert("RGB").resize((2048, 1024))
     surface = np.asarray(bm).astype("f4").min(axis=2) / 255
+    OUT.mkdir(parents=True, exist_ok=True)
+    files = []
+    for i, d in enumerate(days):
+        imgs = [np.asarray(Image.open(CACHE / "gibs" / "clouds" / f"{s}_{d}.jpg").convert("RGB")).astype("f4") / 255
+                for s in sats]
+        alpha = cloud_mask(imgs, surface)
+        name = f"assets/layers/clouds_{i:02d}.png"
+        Image.fromarray(alpha, "L").save(ROOT / name, optimize=True)
+        files.append(name)
+    old = OUT / "clouds.png"
+    if old.exists():
+        old.unlink()
+    print(f"  -> assets/layers/clouds_00..{CLOUD_DAYS - 1:02d}.png  2048x1024")
+    return {"images": files, "dates": [str(days[0]), str(days[-1])],
+            "source": "NASA GIBS — VIIRS SNPP + NOAA-20 Corrected Reflectance (cor real), dias seguidos"}
+
+
+def cloud_mask(imgs, surface):
     clouds = []
     for rgb in imgs:
         mx, mn = rgb.max(axis=2), rgb.min(axis=2)
@@ -144,12 +181,70 @@ def build_clouds():
     # Nos dois satélites ao mesmo tempo: o mínimo remove o reflexo do sol (muda de lugar entre eles)
     a, b = clouds
     best = np.where(np.isnan(a), b, np.where(np.isnan(b), a, np.fmin(a, b)))
-    alpha = (np.nan_to_num(best) ** 0.9 * 255).astype(np.uint8)
-    OUT.mkdir(parents=True, exist_ok=True)
-    Image.fromarray(alpha, "L").save(OUT / "clouds.png", optimize=True)
-    print("  -> assets/layers/clouds.png 4096x2048")
-    return {"image": "assets/layers/clouds.png", "date": "2024-03-20",
-            "source": "NASA GIBS — VIIRS SNPP + NOAA-20 Corrected Reflectance (cor real)"}
+    return (np.nan_to_num(best) ** 0.9 * 255).astype(np.uint8)
+
+
+OZONE = "https://ozonewatch.gsfc.nasa.gov/data/{sat}/Y{year}/"
+
+
+def ozone_sat(year):
+    """Satélite NASA disponível em cada ano (1995 não tem nenhum)."""
+    if year <= 1992: return "nimbus7"
+    if year <= 1994: return "meteor3"
+    if 1996 <= year <= 2004: return "eptoms"
+    if year >= 2005: return "omi"
+    return None
+
+
+def parse_ozone(text):
+    """Arquivo texto do Ozone Watch -> grade 180x360 (DU, norte no topo, -180..180); 0 vira NaN."""
+    lines = text.splitlines()
+    nlon = int(lines[1].split(":")[1].split()[0])
+    rows, buf = [], ""
+    for line in lines[3:]:
+        if "lat =" in line:
+            buf += line.split("lat =")[0][1:] if line.startswith(" ") else line.split("lat =")[0]
+            vals = [int(buf[i:i + 3]) for i in range(0, nlon * 3, 3)]
+            rows.append(vals)
+            buf = ""
+        else:
+            buf += line[1:] if line.startswith(" ") else line
+    g = np.array(rows, "f4")[::-1]                           # arquivos começam no sul
+    g[g == 0] = np.nan
+    yi = (np.arange(180) * g.shape[0] / 180).astype(int)      # regrade (vizinho) para 1°
+    xi = (np.arange(360) * nlon / 360).astype(int)
+    return g[yi][:, xi]
+
+
+def build_ozone():
+    print("🛡️  ozônio (NASA Ozone Watch, média 20/set–20/out, 1979–2025)")
+    import re as _re
+    years = list(range(1979, 2026))
+    frames, ok_years = [], []
+    for y in years:
+        sat = ozone_sat(y)
+        if not sat:
+            frames.append(np.zeros((180, 360), np.uint8)); continue
+        listing = (CACHE / "ozone" / f"{sat}_{y}.html")
+        download(OZONE.format(sat=sat, year=y), listing)
+        names = _re.findall(r'href="([^"]+\.txt)"', listing.read_text(encoding="utf-8", errors="ignore"))
+        pick = []
+        for n in names:
+            m = _re.search(r"(\d{4})m?(\d{2})(\d{2})", n)
+            if m and ((m[2] == "09" and int(m[3]) >= 20) or (m[2] == "10" and int(m[3]) <= 20)):
+                pick.append(n)
+        pick = pick[::3]                                         # a cada 3 dias basta
+        jobs = [(OZONE.format(sat=sat, year=y) + n, CACHE / "ozone" / sat / n) for n in pick]
+        download_many(jobs, f"ozônio {y}")
+        grids = [parse_ozone(j[1].read_text(encoding="utf-8", errors="ignore")) for j in jobs]
+        with np.errstate(all="ignore"):
+            mean = np.nanmean(grids, axis=0) if grids else np.full((180, 360), np.nan)
+        frames.append(encode(mean, 100, 500))
+        ok_years.append(y)
+    info = write_atlas("ozone", frames, "L", 8)
+    return {**info, "frames": {"hist": [years[0], years[-1], 0, 1]}, "range": [100, 500],
+            "missing": [y for y in years if y not in ok_years],
+            "source": "NASA Ozone Watch (GSFC) — TOMS Nimbus-7, Meteor-3, Earth Probe e OMI; média 20/set–20/out"}
 
 
 def build_temp():
@@ -233,10 +328,14 @@ def build_fire():
     download_many(jobs, "queimadas")
     counts = []
     for y in years:
-        c = np.zeros((360, 720), "f4")
+        c, n = np.zeros((360, 720), "f4"), 0
         for p in by_year[y]:
-            c += np.asarray(Image.open(p).convert("RGBA"))[..., 3] > 0
-        counts.append(c / len(by_year[y]))                      # fração dos dias amostrados com fogo
+            im = open_png(p)
+            if im is None:                                      # dia sem dado no servidor: pula
+                continue
+            c += np.asarray(im)[..., 3] > 0
+            n += 1
+        counts.append(c / max(n, 1))                            # fração dos dias amostrados com fogo
     frames = [(np.clip(np.sqrt(c / 0.35), 0, 1) * 255).astype(np.uint8) for c in counts]
     info = write_atlas("fire", frames, "L", 5)
     return {**info, "frames": {"hist": [years[0], years[-1], 0, 1]},
@@ -267,7 +366,8 @@ def build_wind():
             "source": "NASA GISS-E2.1-G (CMIP6), vento a 10 m (uas/vas), média por década"}
 
 
-BUILDERS = {"clouds": build_clouds, "temp": build_temp, "ndvi": build_ndvi, "fire": build_fire, "wind": build_wind}
+BUILDERS = {"clouds": build_clouds, "temp": build_temp, "ndvi": build_ndvi, "fire": build_fire,
+            "wind": build_wind, "ozone": build_ozone}
 
 
 def main():
