@@ -18,8 +18,15 @@ EJ.interp = function (series, y) {
   }
 };
 
+// Último ano observado de cada série (ex.: gelo GSFC termina em 2017).
+// Depois dele, usa a projeção do cenário escolhido.
+EJ.lastObserved = {};
+EJ.LAYERS.forEach(k => {
+  EJ.lastObserved[k] = Math.max(...Object.keys(EJ_HISTORICAL[k]).map(Number));
+});
+
 EJ.value = function (layer, y) {
-  const src = y <= EJ.YEAR_NOW ? EJ_HISTORICAL : EJ_PROJECTIONS[EJ.scenario];
+  const src = y <= EJ.lastObserved[layer] ? EJ_HISTORICAL : EJ_PROJECTIONS[EJ.scenario];
   return EJ.interp(src[layer], y);
 };
 
