@@ -182,7 +182,7 @@ function init() {
 
       // --- 🌿 vegetação (NDVI médio do ano; transparente no oceano)
       vec4 nd = atlas(uNdviTex, uNdviGrid, uNdviF);
-      day = mix(day, nd.rgb, nd.a * uNdviOn * 0.85 * (1.0 - flood));
+      day = mix(day, nd.rgb, nd.a * uNdviOn * 0.7 * (1.0 - flood));
 
       // --- 🧊 gelo marinho (borda da extensão real + ruído; retém perto da Groenlândia)
       float bias = 7.0 * exp(-pow((lon + 60.0) / 42.0, 2.0));
@@ -222,12 +222,12 @@ function init() {
       float flicker = 0.75 + 0.25 * sin(uTime * 7.0 + hash(floor(vUv * 720.0)) * 30.0);
       col += vec3(1.0, 0.42, 0.08) * fire * flicker * uFireOn * 1.6;
 
-      // --- 🛡️ buraco de ozônio: onde a coluna fica abaixo de ~300 DU aparece roxo/azul
-      //     (abaixo de 220 DU é a definição oficial de "buraco"). Visível de dia e de noite.
+      // --- 🛡️ buraco de ozônio: abaixo de 220 DU (definição oficial de "buraco") fica roxo;
+      //     entre 240 e 220 DU vai aparecendo em azul. Visível de dia e de noite.
       float ozRaw = atlas(uOzoneTex, uOzoneGrid, uOzoneF).r;
       float du = (ozRaw * 255.0 - 1.0) / 254.0 * 400.0 + 100.0;      // decodifica 1..255 -> 100..500 DU
-      float hole = smoothstep(310.0, 220.0, du) * step(0.5 / 255.0, ozRaw);
-      vec3 ozCol = mix(vec3(0.20, 0.45, 1.0), vec3(0.55, 0.10, 0.85), smoothstep(260.0, 150.0, du));
+      float hole = smoothstep(240.0, 205.0, du) * step(0.5 / 255.0, ozRaw);
+      vec3 ozCol = mix(vec3(0.20, 0.45, 1.0), vec3(0.55, 0.10, 0.85), smoothstep(220.0, 140.0, du));
       col = mix(col, ozCol, hole * 0.8 * uOzoneOn);
 
       // --- halo atmosférico na borda
@@ -297,7 +297,7 @@ function init() {
   // ---------- 🌬️ ventos: partículas que seguem o vento médio da década ----------
   // Cada partícula é um traço curto: cabeça brilhante, cauda apagada, na direção do vento.
   const wind = (() => {
-    const m = L.wind, N = 6000;
+    const m = L.wind, N = 8000;
     if (!m) return null;
     let data = null;                                             // pixels do atlas (RGBA)
     new THREE.ImageLoader(manager).load(m.atlas, img => {
@@ -344,7 +344,7 @@ function init() {
     function step(dt, F, opacity) {
       mat.opacity = opacity;
       if (!data || opacity < 0.01) return;
-      const SPEED = 0.9, TAIL = 0.5;                             // graus por segundo por m/s · cauda em segundos
+      const SPEED = 0.9, TAIL = 1.1;                             // graus por segundo por m/s · cauda em segundos
       for (let i = 0; i < N; i++) {
         age[i] += dt;
         const a = sample(F[0], lat[i], lon[i]), b = sample(F[1], lat[i], lon[i]);
@@ -357,7 +357,7 @@ function init() {
         xyz(lat[i], lon[i], pos, i * 6);
         xyz(lat[i] - dLat * TAIL, lon[i] - dLon * TAIL, pos, i * 6 + 3);
         const spd = Math.hypot(u, v), fade = Math.sin(Math.PI * age[i] / life[i]);
-        const br = fade * clamp(spd / 6, 0.25, 1);
+        const br = fade * clamp(spd / 5, 0.35, 1) * 1.5;
         col.set([0.75 * br, 0.95 * br, br, 0, 0, 0], i * 6);     // cabeça ciano-clara, cauda apagada
       }
       geo.attributes.position.needsUpdate = true;

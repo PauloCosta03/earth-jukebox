@@ -298,18 +298,22 @@ def build_ndvi():
     download_many(jobs, "NDVI")
     frames = []
     for y in years:
-        acc, cnt = np.zeros((360, 720, 3), "f4"), np.zeros((360, 720), "f4")
+        # Pico da vegetação: em cada pixel, o mês mais verde do ano (verde - vermelho).
+        # A média de todos os meses misturava verão e inverno e ficava bege.
+        best = np.zeros((360, 720, 4), np.uint8)
+        score = np.full((360, 720), -1e9, "f4")
         for m in range(1, 13):
-            im = np.asarray(Image.open(CACHE / "gibs" / "ndvi" / f"{y}-{m:02d}-01.png").convert("RGBA")).astype("f4")
-            ok = im[..., 3] > 0
-            acc[ok] += im[..., :3][ok]
-            cnt += ok
-        rgb = acc / np.maximum(cnt, 1)[..., None]
-        a = np.where(cnt > 0, 255, 0)
-        frames.append(np.dstack([rgb, a]).astype(np.uint8))
+            im = open_png(CACHE / "gibs" / "ndvi" / f"{y}-{m:02d}-01.png")
+            if im is None:
+                continue
+            a = np.asarray(im)
+            s = np.where(a[..., 3] > 0, a[..., 1].astype("f4") - a[..., 0], -1e9)
+            upd = s > score
+            best[upd], score[upd] = a[upd], s[upd]
+        frames.append(best)
     info = write_atlas("ndvi", frames, "RGBA", 5)
     return {**info, "frames": {"hist": [years[0], years[-1], 0, 1]},
-            "source": "NASA GIBS — MODIS Terra L3 NDVI mensal (média anual)"}
+            "source": "NASA GIBS — MODIS Terra L3 NDVI mensal (mês de pico verde de cada ano)"}
 
 
 def build_fire():
