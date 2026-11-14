@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Earth Jukebox</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<header>
+  <h1>🌍 Earth Jukebox</h1>
+  <p>Ouça a Terra de 1880 até 2100. Cada dado da NASA vira um instrumento: conforme a ação humana aquece o planeta, a música perde harmonia. Depois de 2024, você escuta as projeções dos modelos climáticos.</p>
+</header>
+<main>
+  <canvas id="earth" width="320" height="320"></canvas>
+  <div class="controls">
+    <button id="play">▶ Tocar</button>
+    <button id="mute" class="sec">🔊 Som</button>
+    <span id="year">1880</span>
+    <input id="slider" type="range" min="1880" max="2100" value="1880" aria-label="Ano">
+  </div>
+  <div class="controls">
+    <select id="scenario" aria-label="Cenário futuro">
+      <option value="ssp126">SSP1-2.6 · Emissões baixas</option>
+      <option value="ssp245" selected>SSP2-4.5 · Emissões intermediárias</option>
+      <option value="ssp585">SSP5-8.5 · Emissões muito altas</option>
+    </select>
+    <button id="heat" class="sec">🌍 Filtro de calor: desligado</button>
+    <label><input type="checkbox" id="loop"> Repetir sem parar</label>
+  </div>
+  <div id="msg">Aperte play e escute 220 anos de clima.</div>
+  <p class="hint">Clique num card para ouvir só aquele som (solo). 🔊 liga/desliga a camada.</p>
+  <div class="grid">
+    <div class="card" data-layer="temp" style="border-color:var(--temp);color:var(--temp)"><button class="mute-layer" aria-label="Mudo temperatura">🔊</button><div class="lbl">Anomalia de temperatura</div><div class="val" id="v-temp" style="color:var(--text)">–</div><div class="snd">🎹 Melodia: mais quente = mais aguda e dissonante</div></div>
+    <div class="card" data-layer="co2" style="border-color:var(--co2);color:var(--co2)"><button class="mute-layer" aria-label="Mudo CO2">🔊</button><div class="lbl">CO₂ atmosférico</div><div class="val" id="v-co2" style="color:var(--text)">–</div><div class="snd">🌫️ Drone: mais CO₂ = mais distorção</div></div>
+    <div class="card" data-layer="ice" style="border-color:var(--ice);color:var(--ice)"><button class="mute-layer" aria-label="Mudo gelo">🔊</button><div class="lbl">Gelo do Ártico (mín. set.)</div><div class="val" id="v-ice" style="color:var(--text)">–</div><div class="snd">🔔 Sinos: menos gelo = menos sinos</div></div>
+    <div class="card" data-layer="sea" style="border-color:var(--sea);color:var(--sea)"><button class="mute-layer" aria-label="Mudo nível do mar">🔊</button><div class="lbl">Nível do mar</div><div class="val" id="v-sea" style="color:var(--text)">–</div><div class="snd">🌊 Ondas: mar mais alto = ruído mais forte</div></div>
+  </div>
+  <canvas id="chart"></canvas>
+</main>
+<footer>
+  Dados: <a href="https://data.giss.nasa.gov/gistemp/" target="_blank">NASA GISTEMP v4</a> ·
+  <a href="https://climate.nasa.gov/vital-signs/carbon-dioxide/" target="_blank">CO₂ (NOAA/NASA)</a> ·
+  <a href="https://climate.nasa.gov/vital-signs/arctic-sea-ice/" target="_blank">Gelo Ártico (NSIDC/NASA)</a> ·
+  <a href="https://climate.nasa.gov/vital-signs/sea-level/" target="_blank">Nível do mar (NASA)</a> ·
+  Projeções: <a href="https://sealevel.nasa.gov/ipcc-ar6-sea-level-projection-tool" target="_blank">NASA Sea Level Projection Tool</a>,
+  <a href="https://www.nccs.nasa.gov/services/data-collections/land-based-products/nex-gddp-cmip6" target="_blank">NASA NEX-GDDP-CMIP6</a>, IPCC AR6<br>
+  NASA Space Apps Challenge 2026 · The Earth Information Jukebox
+</footer>
+<script src="data/historical.js"></script>
+<script src="data/projections.js"></script>
+<script src="js/data.js"></script>
+<script src="js/audio.js"></script>
+<script src="js/visuals.js"></script>
+<script src="js/main.js"></script>
+</body>
+</html>

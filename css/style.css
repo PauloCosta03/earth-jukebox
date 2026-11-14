@@ -1,0 +1,29 @@
+:root{--bg:#060b16;--panel:#0f1a2e;--text:#e8eefc;--muted:#8fa1c4;--temp:#ff5a4e;--co2:#c08bff;--ice:#5cd6ff;--sea:#3f8cff;}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font-family:system-ui,Segoe UI,sans-serif;}
+header{padding:32px 16px 8px;text-align:center}
+h1{margin:0;font-size:clamp(1.8rem,5vw,3rem);letter-spacing:.02em}
+header p{color:var(--muted);max-width:680px;margin:8px auto 0;line-height:1.5}
+main{max-width:1000px;margin:0 auto;padding:16px}
+#earth{display:block;margin:16px auto;width:min(320px,80vw);aspect-ratio:1;border-radius:50%;transition:box-shadow .3s}
+.controls{display:flex;gap:12px;align-items:center;flex-wrap:wrap;justify-content:center;margin:12px 0}
+button{background:var(--temp);color:#fff;border:0;border-radius:999px;padding:12px 28px;font-size:1rem;font-weight:600;cursor:pointer}
+button.sec,select{background:var(--panel);color:var(--text);border:1px solid #2a3a5c;border-radius:999px;padding:10px 16px;font-size:.95rem}
+label{color:var(--muted);font-size:.9rem}
+input[type=range]{flex:1;min-width:200px;accent-color:var(--temp)}
+#year{font-size:2.4rem;font-weight:700;font-variant-numeric:tabular-nums;min-width:4ch;text-align:center}
+#year.proj{color:#ffb35c}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px}
+.card{position:relative;background:var(--panel);border-radius:14px;padding:14px;border-left:4px solid;cursor:pointer;transition:opacity .2s,transform .2s,outline .2s;outline:2px solid transparent}
+.card:hover{transform:translateY(-2px)}
+.card.solo{outline-color:currentColor}
+.card.off{opacity:.35}
+.card .lbl{color:var(--muted);font-size:.85rem}
+.card .val{font-size:1.6rem;font-weight:700;font-variant-numeric:tabular-nums}
+.card .snd{color:var(--muted);font-size:.8rem;margin-top:4px}
+.mute-layer{position:absolute;top:8px;right:8px;background:none;padding:4px 8px;font-size:1rem}
+.hint{text-align:center;color:var(--muted);font-size:.85rem;margin:4px 0 12px}
+canvas#chart{width:100%;height:220px;background:var(--panel);border-radius:14px;margin-top:16px}
+#msg{text-align:center;min-height:3em;font-size:1.1rem;margin:16px 0;color:#ffd2cc}
+footer{color:var(--muted);font-size:.8rem;padding:24px 16px;text-align:center;line-height:1.6}
+footer a{color:var(--ice)}
