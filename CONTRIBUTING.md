@@ -7,7 +7,7 @@ git clone <url-do-repositorio>
 cd earth-jukebox
 ```
 
-Abra o `index.html` no navegador. Não precisa instalar nada.
+Dê dois cliques em `run.bat` (ou rode `python -m http.server 8000`) e abra http://localhost:8000. Abrir o `index.html` direto não funciona: o globo 3D precisa de servidor local.
 
 ## Fluxo de trabalho
 
@@ -24,7 +24,8 @@ Ninguém faz commit direto na `main`.
 | Quero mudar... | Arquivo |
 |---|---|
 | Sons e instrumentos | `js/audio.js` |
-| Globo e gráfico | `js/visuals.js` |
+| Globo 3D e shaders | `js/globe.js` |
+| Gráfico 2D | `js/chart.js` |
 | Botões, textos e eventos | `js/main.js`, `index.html` |
 | Visual (cores, layout) | `css/style.css` |
 | Dados históricos | `scripts/fetch_nasa_data.py` (gera `data/historical.js`) |

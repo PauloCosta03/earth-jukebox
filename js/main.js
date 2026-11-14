@@ -1,8 +1,16 @@
-// Controle da interface: play contínuo 1880→2100, cenários, camadas e filtros.
+// Interface: timeline 1880→2100, cenários, camadas visuais (chips) e de áudio (cards).
 (function () {
   const $ = id => document.getElementById(id);
   const slider = $('slider'), yearEl = $('year'), msg = $('msg'), playBtn = $('play');
   let timer = null;
+
+  // O globo 3D usa módulos ES e texturas — não funciona abrindo o arquivo direto.
+  if (location.protocol === 'file:') {
+    const l = $('loading');
+    l.classList.add('error');
+    l.querySelector('p').innerHTML =
+      'O globo 3D precisa de um servidor local.<br>Dê dois cliques em <b>run.bat</b> na pasta do projeto<br>e abra <b>http://localhost:8013</b>.';
+  }
 
   const events = {
     1880: 'Era industrial: carvão alimenta o mundo.', 1910: 'O planeta ainda soa em harmonia.',
@@ -11,7 +19,7 @@
     1988: 'Cientistas da NASA alertam o Congresso dos EUA sobre o aquecimento global.',
     1993: 'Satélites passam a medir o nível do mar.', 2012: 'Recorde de derretimento do gelo do Ártico.',
     2015: 'Acordo de Paris: meta de 1,5 °C.', 2024: 'Ano mais quente da história medida.',
-    2025: 'A partir daqui: projeções dos modelos climáticos usados pela NASA (CMIP6/IPCC).',
+    2025: 'A partir daqui: projeções dos modelos climáticos (CMIP6/IPCC) usados pela NASA.',
     2050: 'Meados do século: o cenário escolhido decide a música.',
     2100: 'Fim do século. Que música vamos deixar?'
   };
@@ -30,7 +38,8 @@
     EJ.LAYERS.forEach(k => ($('v-' + k).textContent = fmt[k](v[k])));
     const ev = Object.keys(events).map(Number).filter(k => k <= y).pop();
     if (ev) msg.textContent = `${ev}: ${events[ev]}`;
-    EJ.visuals.drawEarth(v); EJ.visuals.drawChart(y);
+    EJ.chart.draw(y);
+    if (EJ.globe) EJ.globe.update(v);
     if (sound) EJ.audio.play(v);
   }
 
@@ -41,7 +50,7 @@
       c.classList.toggle('off', !EJ.audio.audible(k));
       c.querySelector('.mute-layer').textContent = s.off.has(k) ? '🔇' : '🔊';
     });
-    EJ.visuals.drawChart(+slider.value);
+    EJ.chart.draw(+slider.value);
   }
 
   playBtn.onclick = () => {
@@ -53,26 +62,33 @@
       render(y); y++;
       if (y > EJ.YEAR_MAX) {
         if ($('loop').checked) y = EJ.YEAR_MIN;
-        else { clearInterval(timer); timer = null; playBtn.textContent = '↺ Tocar de novo'; }
+        else { clearInterval(timer); timer = null; playBtn.textContent = '↺ De novo'; }
       }
     }, 260);
   };
 
-  $('mute').onclick = e => { e.target.textContent = EJ.audio.toggleMute() ? '🔇 Mudo' : '🔊 Som'; };
-  $('heat').onclick = e => {
-    const on = EJ.visuals.toggleHeatFilter();
-    e.target.textContent = on ? '🌡️ Filtro de calor: ligado' : '🌍 Filtro de calor: desligado';
-    render(+slider.value, false);
-  };
+  $('mute').onclick = e => { e.target.textContent = EJ.audio.toggleMute() ? '🔇' : '🔊'; };
   $('scenario').onchange = e => { EJ.scenario = e.target.value; render(+slider.value, false); };
   slider.oninput = () => { EJ.audio.init(); render(+slider.value); };
 
+  // cards = camadas de ÁUDIO (clique: solo · alto-falante: liga/desliga)
   document.querySelectorAll('.card').forEach(card => {
     const k = card.dataset.layer;
     card.onclick = () => { EJ.audio.init(); EJ.audio.toggleSolo(k); refreshCards(); };
     card.querySelector('.mute-layer').onclick = e => { e.stopPropagation(); EJ.audio.toggleLayer(k); refreshCards(); };
   });
 
-  addEventListener('resize', () => EJ.visuals.drawChart(+slider.value));
+  // chips = camadas VISUAIS do globo
+  document.querySelectorAll('.chip[data-viz]').forEach(ch => {
+    ch.onclick = () => { if (EJ.globe) ch.classList.toggle('on', EJ.globe.toggle(ch.dataset.viz)); };
+  });
+  $('about-btn').onclick = () => $('about').classList.toggle('open');
+
+  addEventListener('ej-globe-ready', () => {
+    document.querySelectorAll('.chip[data-viz]').forEach(ch =>
+      ch.classList.toggle('on', EJ.globe.layers[ch.dataset.viz]));
+    render(+slider.value, false);
+  });
+  addEventListener('resize', () => EJ.chart.draw(+slider.value));
   render(EJ.YEAR_MIN, false);
 })();
