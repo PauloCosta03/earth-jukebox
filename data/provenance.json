@@ -1,0 +1,29 @@
+{
+  "historical": {
+    "temp": "NASA GISS GISTEMP v4, °C vs. 1951–1980",
+    "co2": "NASA GISS, CO2 global (ppm) usado no ModelE/CMIP6",
+    "ice": "NASA GSFC, extensão de setembro (mi km²), 1979–2017",
+    "sea": "PENDENTE — valores anteriores mantidos (ver README, seção Dados)",
+    "summary": "Somente dados abertos da NASA — ver README, seção Dados"
+  },
+  "projections": {
+    "temp": "NASA GISS-E2.1-G (CMIP6), média global de tas; ancorado à média GISTEMP 2015–2024",
+    "co2": "NASA GISS, GHG.CMIP6 por cenário (ppm)",
+    "ice": "NASA GISS-E2.1-G (CMIP6), extensão de setembro (siconca >= 15%); bias corrigido vs. GSFC 1979–2014",
+    "sea": "PENDENTE — valores anteriores mantidos (ver README, seção Dados)"
+  },
+  "adjustments": {
+    "temp_anchor_shift_C": {
+      "ssp126": -0.002,
+      "ssp245": 0.014,
+      "ssp585": -0.004
+    },
+    "ice_bias_ratio": 0.623
+  },
+  "last_observed_year": {
+    "temp": 2025,
+    "co2": 2014,
+    "ice": 2017,
+    "sea": 2024
+  }
+}

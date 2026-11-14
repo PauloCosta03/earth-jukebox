@@ -36,7 +36,7 @@ Clique num card para ouvir **só aquele instrumento** (solo); o 🔊 de cada car
 
 ### Futuro (2025–2100)
 
-Projeções em três cenários do IPCC AR6 (SSP1-2.6, SSP2-4.5, SSP5-8.5), com base no NASA Sea Level Projection Tool e nos modelos CMIP6 (NASA NEX-GDDP-CMIP6). No gráfico, a projeção aparece tracejada; o ano fica laranja.
+Projeções em três cenários SSP (SSP1-2.6, SSP2-4.5, SSP5-8.5), calculadas a partir do modelo climático da própria NASA (GISS-E2.1-G, CMIP6). Detalhes na seção **Dados**. No gráfico, a projeção aparece tracejada; o ano fica laranja.
 
 ## Estrutura
 
@@ -50,28 +50,56 @@ js/chart.js                 gráfico 2D das séries
 js/data.js                  junta histórico e projeção, interpolação por ano
 js/main.js                  interface e controles
 js/vendor/                  three.js + OrbitControls (empacotados p/ funcionar offline)
-data/historical.js          séries históricas (geradas do dado oficial)
-data/projections.js         projeções por cenário SSP
+data/historical.js          séries observadas (GERADO pelo script)
+data/projections.js         projeções por cenário SSP (GERADO pelo script)
+data/provenance.json        fonte e ajustes de cada série (GERADO pelo script)
 assets/textures/            texturas NASA (Blue/Black Marble, relevo, oceanos)
-scripts/fetch_nasa_data.py  baixa os dados oficiais e regenera data/historical.js
+scripts/fetch_nasa_data.py  pipeline: baixa os dados da NASA e gera os arquivos de data/
 ```
 
-## Atualizar os dados oficiais
+## Dados
+
+**Regra do projeto: só usamos dados abertos da NASA.** Tudo em `data/` é gerado pelo script, nada é digitado à mão.
+
+### Observações
+
+| Série | Fonte NASA | Período |
+|---|---|---|
+| Temperatura | [NASA GISS GISTEMP v4](https://data.giss.nasa.gov/gistemp/), anomalia global anual (base 1951–1980) | 1880–2025 |
+| CO₂ | [NASA GISS](https://portal.nccs.nasa.gov/GISS_modelE/modelE_input_data/), concentração global usada no ModelE (`GHG.CMIP6.1-2014.txt`) | 1880–2014 |
+| Gelo do Ártico | [NASA GSFC Cryospheric Sciences Lab](https://earth.gsfc.nasa.gov/cryo/data/arcticantarctic-sea-ice-time-series), extensão de setembro | 1979–2017 |
+| Nível do mar | [NASA-SSH GMSL Indicator](https://podaac.jpl.nasa.gov/dataset/NASA_SSH_GMSL_INDICATOR) (PO.DAAC), exige token Earthdata gratuito | **pendente** |
+
+Depois do último ano observado de cada série, o app usa a projeção do cenário escolhido.
+
+### Projeções (2015–2100)
+
+| Série | Fonte NASA | Método |
+|---|---|---|
+| CO₂ | NASA GISS, `GHG.CMIP6.2015-2500.<cenário>.txt` | Concentrações usadas como forçante do modelo da NASA |
+| Temperatura | [GISS-E2.1-G](https://data.giss.nasa.gov/modelE/cmip6/) (CMIP6, membro r1i1p1f2), variável `tas`, via [NCCS](https://portal.nccs.nasa.gov/datashare/giss_cmip6/) | Média global ponderada por área; anomalia vs. 1951–1980 do próprio modelo; ancorada à média GISTEMP 2015–2024 (ajuste < 0,02 °C) |
+| Gelo do Ártico | GISS-E2.1-G, variável `siconca` | Extensão de setembro (células ≥ 15%); viés corrigido pela razão GSFC/modelo em 1979–2014 (fator 0,62) |
+| Nível do mar | NASA Sea Level Projection Tool (IPCC AR6) | **pendente** |
+
+**Limitações (importante para a apresentação):**
+- Projeções de um único modelo e um único membro: a variabilidade ano a ano é real do modelo, não uma previsão de cada ano.
+- O GISS-E2.1-G mantém mais gelo ártico que outros modelos e não zera o gelo de setembro até 2100, nem no SSP5-8.5.
+- Gelo de 2018–2024 e CO₂ de 2015–2024 vêm do modelo e dos cenários, não de observação.
+- Nível do mar: os valores atuais ainda são aproximações antigas, marcadas como PENDENTE nos arquivos gerados.
+
+### Atualizar os dados
 
 ```
-python scripts/fetch_nasa_data.py
+python -m venv .venv
+.venv\Scripts\pip install -r scripts/requirements.txt      (Linux/Mac: .venv/bin/pip)
+.venv\Scripts\python scripts/fetch_nasa_data.py
 ```
 
-Usa só a biblioteca padrão do Python. Se uma fonte falhar, os valores atuais daquela série são mantidos.
+Na primeira execução, ~350 MB de saídas do modelo são baixados para `data/cache/` (ignorado pelo git). Para o nível do mar observado, defina `EARTHDATA_TOKEN` com um token de https://urs.earthdata.nasa.gov antes de rodar. Se uma fonte falhar, a série mantém os valores atuais e o motivo é impresso.
 
-## Fontes e créditos
+## Créditos
 
-- NASA GISS Surface Temperature Analysis (GISTEMP v4): https://data.giss.nasa.gov/gistemp/
-- NOAA GML, CO₂ de Mauna Loa: https://gml.noaa.gov/ccgg/trends/
-- NSIDC Sea Ice Index v3: https://nsidc.org/data/g02135
-- NASA Sea Level: https://climate.nasa.gov/vital-signs/sea-level/
-- NASA Sea Level Projection Tool (IPCC AR6): https://sealevel.nasa.gov/ipcc-ar6-sea-level-projection-tool
-- NASA NEX-GDDP-CMIP6: https://www.nccs.nasa.gov/services/data-collections/land-based-products/nex-gddp-cmip6
+- Dados: NASA GISS (GISTEMP, ModelE/GISS-E2.1-G), NASA GSFC, NASA NCCS, NASA PO.DAAC
 - Texturas: NASA Blue Marble / Black Marble (domínio público), via pacote three-globe
 - 3D: [three.js](https://threejs.org) (MIT)
 
