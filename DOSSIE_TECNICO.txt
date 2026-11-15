@@ -1,0 +1,218 @@
+EARTH JUKEBOX — DOSSIÊ TÉCNICO
+NASA Space Apps Challenge 2026 · Desafio "The Earth Information Jukebox"
+================================================================================
+
+1. O QUE É
+--------------------------------------------------------------------------------
+O Earth Jukebox transforma dados climáticos da NASA (1880 a 2100) em música e em
+um globo 3D interativo e acessível. Cada indicador do clima vira um instrumento:
+
+  Temperatura global ...... melodia (mais aguda, dissonante e desafinada com o calor)
+  CO2 ..................... drone grave (distorce com mais gás carbônico)
+  Gelo do Ártico .......... sinos (tocam menos conforme o gelo diminui)
+  Nível do mar ............ ondas (crescem com o mar)
+
+Conforme o planeta aquece, a escala musical muda de maior para lócria: a harmonia
+"se desfaz". O projeto foi pensado desde o início para pessoas cegas e com baixa
+visão (narração por voz, teclado, leitores de tela).
+
+Até o último ano medido os valores são OBSERVAÇÕES. Depois, PROJEÇÕES do modelo
+climático da NASA em três cenários de emissões (SSP1-2.6, SSP2-4.5, SSP5-8.5).
+
+
+2. DE ONDE VÊM OS DADOS (TODAS AS FONTES SÃO DA NASA)
+--------------------------------------------------------------------------------
+Nenhum valor é digitado à mão. Tudo é baixado e processado por scripts Python
+reproduzíveis (pasta scripts/). A origem de cada série fica registrada no arquivo
+data/provenance.json, gerado automaticamente.
+
+2.1 Séries observadas (data/historical.js — gerado por scripts/fetch_nasa_data.py)
+
+  Temperatura global (1880–2025)
+    NASA GISS — GISTEMP v4, anomalia anual global (base 1951–1980)
+    https://data.giss.nasa.gov/gistemp/tabledata_v4/GLB.Ts+dSST.csv
+
+  CO2 (1880–2014)
+    NASA GISS — concentrações globais usadas no modelo ModelE (CMIP6)
+    https://portal.nccs.nasa.gov/GISS_modelE/modelE_input_data/GHG.CMIP6.1-2014.txt
+
+  Gelo do Ártico (1979–2017, extensão de setembro)
+    NASA Goddard Space Flight Center — Cryospheric Sciences Lab
+    https://earth.gsfc.nasa.gov/sites/default/files/neptune/files/NH_IceExt_Monthly_1978-2017.txt
+    Antes de 1979 não há satélite: o app mostra "sem satélite".
+
+  Nível do mar (1993–2025)
+    NASA JPL / NASA GSFC (programa NASA Sea Level Change) — nível médio global por
+    altimetria de satélite NASA-SSH (TOPEX/Poseidon, Jason-1/2/3, Sentinel-6).
+    Arquivo aberto publicado pelos cientistas da NASA (Willis, Hamlington, Fournier)
+    e indicado pela própria NASA no Scientific Visualization Studio (svs.gsfc.nasa.gov/5611):
+    https://doi.org/10.5281/zenodo.7702315
+    Antes de 1993 não há satélite: o app mostra "sem satélite" (nenhum valor inventado).
+
+2.2 Projeções 2015–2100 (data/projections.js — gerado por scripts/fetch_nasa_data.py)
+
+  Temperatura e gelo do Ártico
+    Modelo climático da NASA GISS-E2.1-G (CMIP6, membro r1i1p1f2), variáveis
+    "tas" (temperatura) e "siconca" (gelo marinho), via NASA Center for Climate
+    Simulation (NCCS):
+    https://portal.nccs.nasa.gov/datashare/giss_cmip6/
+    - Temperatura: média global ponderada pela área; ancorada para que a média
+      2015–2024 do modelo coincida com a observada pelo GISTEMP.
+    - Gelo: extensão de setembro (células com >= 15% de gelo), com correção de
+      viés pela comparação com os dados do GSFC em 1979–2014.
+
+  CO2
+    NASA GISS — arquivos de forçante do ModelE para cada cenário
+    https://portal.nccs.nasa.gov/GISS_modelE/modelE_input_data/GHG.CMIP6.2015-2500.<cenário>.txt
+
+  Nível do mar
+    Modelo semi-empírico (Rahmstorf, 2007) dirigido pela temperatura do modelo
+    GISS de cada cenário. Começa na taxa atual medida pela NASA (4,4 mm/ano, do
+    mesmo arquivo da NASA) e chega em 2100 à mediana do NASA Sea Level Projection
+    Tool (0,44 / 0,56 / 0,77 m, mesmos valores da tabela 9.9 do IPCC AR6):
+    https://sealevel.nasa.gov/ipcc-ar6-sea-level-projection-tool
+    A conversão da base 1995–2014 para 1993 usa a própria série observada da NASA.
+
+2.3 Camadas visuais do globo (assets/layers/ — gerado por scripts/build_layers.py)
+
+  Mapa de anomalia de temperatura .... NASA GISTEMP (grade 1200 km) + GISS-E2.1-G
+  Nuvens reais (16 dias, março/2024) . NASA GIBS — VIIRS (Suomi NPP e NOAA-20),
+                                       Corrected Reflectance (cor real)
+  Vegetação (NDVI) ................... NASA GIBS — MODIS Terra, NDVI mensal
+  Queimadas .......................... NASA GIBS — MODIS Terra+Aqua Thermal Anomalies
+  Ventos ............................. NASA GISS-E2.1-G, vento a 10 m (uas/vas),
+                                       média por década e por cenário
+  Buraco de ozônio ................... NASA Ozone Watch (GSFC) — TOMS e OMI
+  Correntes oceânicas ................ NASA GISS-E2.1-G, altura do mar (zos), convertida
+                                       em correntes geostróficas (média 1985–2014)
+  GIBS: https://gibs.earthdata.nasa.gov
+  Ozone Watch: https://ozonewatch.gsfc.nasa.gov
+
+2.4 Texturas-base do globo (assets/textures/ — gerado por scripts/build_textures.py)
+
+  Superfície de dia ...... NASA Blue Marble Next Generation (topografia e batimetria,
+                           maio de 2004) — NASA Earth Observatory
+  Relevo ................. NASA Blue Marble Next Generation, topografia
+                           (usada no relevo 3D e no cálculo da inundação)
+  Máscara de água ........ NASA MODIS Terra Land/Water Mask (via GIBS); ao sul de
+                           60°S (fora da cobertura MODIS) usa a topografia acima
+  Luzes das cidades ...... NASA Black Marble 2016 (VIIRS) — só as luzes
+
+  Única textura que não é dado: assets/textures/waves.png, uma textura de ondas
+  gerada matematicamente (efeito visual da água).
+
+
+3. COMO O CÓDIGO FUNCIONA
+--------------------------------------------------------------------------------
+Aplicação web estática: HTML, CSS e JavaScript puro, sem servidor e sem instalação.
+Funciona offline depois de carregada. O 3D usa three.js (incluído no projeto);
+o som é sintetizado em tempo real pela Web Audio API.
+
+3.1 Fluxo geral
+
+  [scripts Python] --> baixam dados da NASA --> geram data/*.js e assets/
+          |
+          v
+  [navegador]  data.js junta observação + projeção do cenário escolhido
+          |
+          +--> audio.js  (música)       +--> globe.js (globo 3D e camadas)
+          +--> chart.js  (gráfico)      +--> main.js  (interface, linha do tempo)
+          +--> a11y.js   (narração, teclado, acessibilidade)
+
+3.2 Arquivos principais
+
+  index.html ............. página do aplicativo (interface sobre o globo)
+  intro.html ............. tela de apresentação: escolha de idioma e introdução falada
+  css/style.css .......... visual (unidades rem, alto contraste, redução de movimento)
+
+  js/data.js ............. CAMADA DE DADOS. Une a série observada com a projeção do
+                           cenário. Interpolação PCHIP (curvas suaves, sem "pulos").
+                           A projeção é ligada ao último valor medido sem degrau.
+                           Antes da primeira medição a série não tem valor (null) e o
+                           app mostra "sem satélite".
+  js/audio.js ............ MOTOR DE SOM. Cada dado controla um instrumento; a
+                           temperatura escolhe o modo musical (de maior a lócria).
+  js/globe.js ............ GLOBO 3D (three.js + shaders GLSL):
+                           - relevo real deslocando os vértices;
+                           - inundação costeira pelo relevo (com exagero vertical
+                             para ser visível em escala global);
+                           - borda do gelo calculada da extensão medida;
+                           - camadas por ano usando "atlas" (uma imagem com um quadro
+                             por ano), com transição suave entre anos;
+                           - nuvens: dias reais que se transformam um no outro,
+                             levados pelo vento do modelo da NASA;
+                           - ventos como fluido: 16 mil partículas calculadas na
+                             placa de vídeo deixam rastros (linhas de corrente);
+                           - oceano com ondas e correntes em movimento.
+  js/chart.js ............ gráfico das quatro séries (passado sólido, futuro tracejado)
+  js/events.js ........... acontecimentos históricos da linha do tempo e impactos
+  js/main.js ............. interface: linha do tempo, tocar/pausar, cenários,
+                           painéis, modo "Contar a história"
+  js/a11y.js ............. acessibilidade (ver seção 4)
+  js/i18n.js ............. português e inglês (textos, narração, rótulos de leitor de tela)
+  js/vision.js ........... "ouvir imagens": lê cor, brilho e movimento de imagens e
+                           vídeos (ex.: visualizações da NASA) e transforma em som
+  js/score.js ............ toca partituras (MusicXML, MIDI e imagem de partitura)
+  js/narrator-*.js ....... narração gravada em inglês e voz offline de reserva
+
+  scripts/fetch_nasa_data.py .. baixa as séries da NASA -> data/historical.js,
+                                data/projections.js, data/provenance.json
+  scripts/build_layers.py ..... gera as camadas do globo -> assets/layers/, data/layers.js
+  scripts/build_textures.py ... gera as texturas-base -> assets/textures/
+  scripts/serve.py ............ servidor local para rodar o projeto
+
+3.3 Linha do tempo
+  Ao apertar Tocar, cada ano dura uma "batida". Os valores do ano alimentam a música,
+  o globo e o gráfico ao mesmo tempo. No modo "Contar a história", a música pausa
+  em 25 acontecimentos (ex.: curva de Keeling, buraco de ozônio, Acordo de Paris)
+  e uma voz conta o fato, o impacto na Terra e os dados medidos naquele ano.
+  Depois de 2025, marcos do futuro são montados com as projeções do cenário escolhido.
+
+
+4. ACESSIBILIDADE
+--------------------------------------------------------------------------------
+  - Narração por voz sempre ligada ao abrir: cada botão diz o que faz e seu estado.
+  - Tela de apresentação falada: qualquer tecla diz como escolher o idioma (P / E).
+  - Tudo funciona só com teclado; atalhos para todas as funções.
+  - Compatível com leitores de tela (NVDA, Narrador): estados ARIA em todos os controles.
+  - Botão "Descrever": lê ano, valores, harmonia e camadas ligadas.
+  - Sons da interface na mesma tonalidade da música (dá para "ouvir" onde se está).
+  - Tamanho do texto, alto contraste, reduzir movimento, esconder interface, tela cheia.
+  - Três vozes em ordem: narração gravada (inglês) -> voz do navegador -> voz offline.
+
+
+5. TRANSPARÊNCIA E LIMITAÇÕES
+--------------------------------------------------------------------------------
+  - As projeções vêm de UMA simulação de UM modelo (GISS-E2.1-G). A variação de um
+    ano para o outro é do próprio modelo, não uma previsão de cada ano.
+  - Inundação e borda do gelo usam dados reais com exagero visual para serem
+    visíveis em escala global (avisado na interface).
+  - O nível do mar projetado é semi-empírico (Rahmstorf 2007) calibrado no NASA
+    Sea Level Projection Tool; não é uma saída direta do modelo.
+  - As correntes oceânicas representam o clima médio de 1985–2014.
+  - O crescimento das luzes das cidades ao longo dos anos é uma curva ilustrativa
+    (a NASA só tem imagens noturnas de satélite recentes); a localização das luzes
+    é real (Black Marble 2016).
+  - Os textos dos acontecimentos históricos e dos impactos são resumos escritos
+    pela equipe a partir de fatos públicos; os números citados vêm dos dados acima.
+  - A narração em inglês dos acontecimentos foi gravada com voz sintética por IA.
+
+
+6. COMO RODAR E REPRODUZIR
+--------------------------------------------------------------------------------
+  Rodar:      dois cliques em run.bat (abre http://localhost:8013)
+              ou: python scripts/serve.py
+  Online:     publicado como site estático (GitHub Pages).
+
+  Reproduzir os dados (Python 3 + bibliotecas em scripts/requirements.txt):
+      python scripts/fetch_nasa_data.py
+      python scripts/build_layers.py
+      python scripts/build_textures.py
+  Os downloads ficam em data/cache/ (fora do repositório). Se uma fonte estiver
+  fora do ar, o script mantém os valores anteriores e informa o motivo.
+
+
+7. CRÉDITOS DE SOFTWARE
+--------------------------------------------------------------------------------
+  three.js (MIT) — 3D · Ícones Lucide (ISC) · meSpeak/eSpeak (GPL-3.0) — voz offline
+  Código do projeto: licença MIT.

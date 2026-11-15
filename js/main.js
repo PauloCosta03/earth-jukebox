@@ -30,7 +30,7 @@
     temp: v => sign(v) + nf(Math.abs(v), 2) + ' °C',
     co2: v => nf(v, 0) + ' ppm',
     ice: v => v == null ? T('fmt.noSat') : nf(v, 1) + ' ' + T('fmt.mkm2'),
-    sea: v => sign(v) + nf(Math.abs(v), 0) + ' mm',
+    sea: v => v == null ? T('fmt.noSat') : sign(v) + nf(Math.abs(v), 0) + ' mm',
     img: f => !f ? '–' : (f.topHues.length ? EJ.vision.hueName(f.topHues[0].bin) : T('fmt.noColor')) +
       ' · ' + Math.round(f.density * 100) + '% ' + T('fmt.bright')
   };
@@ -42,7 +42,7 @@
   const wait = ms => new Promise(r => setTimeout(r, ms));
   // temperatura em palavras (a voz lê melhor que "+0,45 °C")
   const tempWords = t => Math.abs(t) < 0.05 ? T('temp.avg')
-    : T('temp.words', { v: nf(Math.abs(t), 1), s: Math.abs(t) >= 2 ? 's' : '', dir: T(t > 0 ? 'temp.above' : 'temp.below') });
+    : T('temp.words', { v: nf(Math.abs(t), 1), s: (EJ.i18n.lang === 'en' ? Math.abs(t) !== 1 : Math.abs(t) >= 2) ? 's' : '', dir: T(t > 0 ? 'temp.above' : 'temp.below') });
 
   function eventAt(y) {
     const E = EJ.eventsNow();
@@ -76,7 +76,7 @@
     clearTimeout(soonT);                              // não deixa a descrição do slider atropelar
     showEvent(y, ev, true);
     const text = eventSpeech(y, ev);
-    const voiceOn = EJ.a11y && EJ.a11y.options.voice && 'speechSynthesis' in window;
+    const voiceOn = EJ.a11y && EJ.a11y.options.voice;   // sem voz no navegador, usa a gravada ou a offline
     if (voiceOn) return EJ.a11y.speakAsync(text).then(() => wait(350));
     announce(text);                                   // o leitor de tela lê a região viva
     return wait(Math.max(3500, text.length * 62));    // ~16 caracteres por segundo
@@ -122,7 +122,8 @@
     const v = EJ.at(cur);
     const on = EJ.globe ? Object.keys(EJ.globe.layers).filter(k => k !== 'spin' && EJ.globe.layers[k]) : [];
     return `${cur}${v.projected ? T('desc.projected', { s: scenarioShort() }) : T('desc.measured')}. ` +
-      T('desc.values', { temp: fmt.temp(v.temp), co2: fmt.co2(v.co2), ice: fmt.ice(v.ice), sea: fmt.sea(v.sea) }) +
+      T('desc.values', { temp: fmt.temp(v.temp), co2: fmt.co2(v.co2), ice: fmt.ice(v.ice),
+                         sea: v.sea == null ? T('desc.seaNone') : T('desc.sea', { v: fmt.sea(v.sea) }) }) +
       T('desc.music', { mode: harmonyOf(v) }) +
       (on.length ? T('desc.layers', { list: on.map(k => T('layer.' + k)).join(', ') }) : T('desc.noLayers')) +
       eventContext(cur) +
@@ -560,6 +561,9 @@
 
   // usado por js/a11y.js (atalhos, guia, reduzir movimento)
   EJ.ui = { openPanel, closePanels, announce, setIcon, syncChips, describe: describeFull, isPlaying: () => playing || !!timer || scorePlaying };
+  // todas as falas dos acontecimentos no idioma/cenário atual (usado para gravar a narração em inglês:
+  // cada MP3 de audio/en tem o nome do "hash" do texto exato da fala)
+  EJ.cardSpeech = () => eventYears().map(y => eventSpeech(y, eventAt(y)));
 
   // 🌐 troca de idioma: refaz os textos criados pelo código (o HTML é trocado pelo i18n.js)
   EJ.i18n.onChange(() => {

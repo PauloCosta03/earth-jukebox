@@ -21,6 +21,7 @@ EJ.a11y = (function () {
   const opt = { voice: true, chimes: true, rate: 1.05, size: 1, contrast: sysContrast, motion: sysMotion,
                 story: true };   // story = pausar a música nos acontecimentos e contá-los
   try { Object.assign(opt, JSON.parse(localStorage.getItem(KEY) || '{}')); } catch (e) { /* sem armazenamento */ }
+  opt.voice = true;                         // narração SEMPRE ligada ao abrir a página (V desliga só nesta visita)
   const save = () => { try { localStorage.setItem(KEY, JSON.stringify(opt)); } catch (e) { /* ok */ } };
 
   // como o usuário está navegando: só narra o foco quando veio do teclado
@@ -44,43 +45,80 @@ EJ.a11y = (function () {
   if (synth) { pickVoices(); synth.addEventListener?.('voiceschanged', pickVoices); }
   const langKey = l => (/^en/i.test(l || '') ? 'en' : 'pt');
 
-  let speaking = 0;
   const duck = on => { try { EJ.audio && EJ.audio.duck(on); } catch (e) { /* áudio ainda não iniciou */ } };
-  // fala um texto. Textos longos são divididos em frases (o Chrome corta falas muito longas).
-  // lang: idioma desta fala ('pt-BR' / 'en'); por padrão, o idioma atual do site
+  // Três vozes, nesta ordem:
+  //  1. narração GRAVADA em inglês (js/narrator-online.js), quando existe MP3 para o texto exato
+  //  2. voz do navegador/sistema no idioma (speechSynthesis)
+  //  3. voz OFFLINE de reserva (js/narrator-fallback.js), se não houver voz instalada no idioma
+  const recorded = EJ.narratorOnline, offline = EJ.narratorFallback;
+  let gen = 0;                                        // muda a cada interrupção: falas antigas não continuam
+  function stopAll() {
+    gen++;
+    if (synth) synth.cancel();
+    if (recorded) recorded.stop();
+    if (offline) offline.stop();
+  }
+  // fala um texto. lang: idioma desta fala ('pt-BR' / 'en'); por padrão, o idioma atual do site
   function speak(text, { interrupt = true, force = false, onDone = null, lang = null } = {}) {
-    if (!synth || !text || (!opt.voice && !force)) { if (onDone) onDone(false); return; }
-    if (interrupt) { synth.cancel(); speaking = 0; }
-    const parts = String(text).replace(/\s+/g, ' ').match(/[^.!?;:]+[.!?;:]?/g) || [text];
-    const chunks = [];
-    for (const p of parts) {
-      const last = chunks[chunks.length - 1];
-      if (last && (last + p).length < 180) chunks[chunks.length - 1] = last + p; else chunks.push(p.trim());
-    }
-    const list = chunks.filter(Boolean);
-    list.forEach((c, i) => {
-      const u = new SpeechSynthesisUtterance(c);
-      const k = langKey(lang || EJ.i18n.speechLang());
-      u.lang = k === 'en' ? 'en-US' : 'pt-BR'; if (voices[k]) u.voice = voices[k];
-      u.rate = opt.rate; u.pitch = 1;
-      u.onstart = () => { speaking++; duck(true); };
-      u.onend = u.onerror = () => {
-        speaking = Math.max(0, speaking - 1); if (!synth.speaking) duck(false);
-        if (i === list.length - 1 && onDone) onDone(true);           // avisa quando a ÚLTIMA frase terminou
-      };
-      synth.speak(u);
-    });
+    if (!text || (!opt.voice && !force)) { if (onDone) onDone(false); return; }
+    if (interrupt) stopAll();
+    const token = gen, k = langKey(lang || EJ.i18n.speechLang()), full = String(text);
+    const finish = ok => { duck(false); if (onDone) onDone(ok); };
+    // 3. voz offline (carrega ≈5 MB só na primeira vez)
+    const viaOffline = rest => {
+      if (token !== gen) return;
+      if (!offline) { finish(false); return; }
+      offline.speak(rest, k, opt.rate, () => duck(true), ok => { if (token === gen) finish(ok); });
+    };
+    // 2. voz do navegador. Textos longos são divididos em frases (o Chrome corta falas muito longas).
+    const viaDevice = () => {
+      if (token !== gen) return;
+      if (synth && !voices[k]) pickVoices();          // as vozes podem chegar depois de abrir a página
+      if (!synth || !voices[k]) { viaOffline(full); return; }
+      const parts = full.replace(/\s+/g, ' ').match(/[^.!?;:]+[.!?;:]?/g) || [full];
+      const chunks = [];
+      for (const p of parts) {
+        const last = chunks[chunks.length - 1];
+        if (last && (last + p).length < 180) chunks[chunks.length - 1] = last + p; else chunks.push(p.trim());
+      }
+      const list = chunks.filter(Boolean);
+      let failed = false;
+      list.forEach((c, i) => {
+        const u = new SpeechSynthesisUtterance(c);
+        u.lang = k === 'en' ? 'en-US' : 'pt-BR'; u.voice = voices[k];
+        u.rate = opt.rate; u.pitch = 1;
+        u.onstart = () => duck(true);
+        u.onend = () => { if (i === list.length - 1 && !failed && token === gen) finish(true); };   // fim da ÚLTIMA frase
+        u.onerror = e => {
+          if (failed || token !== gen) return;
+          if (e.error === 'interrupted' || e.error === 'canceled') { if (i === list.length - 1) finish(false); return; }
+          failed = true; synth.cancel(); viaOffline(list.slice(i).join(' '));   // voz quebrou: continua na offline
+        };
+        synth.speak(u);
+      });
+    };
+    // 1. gravação em inglês (só se existir MP3 para este texto)
+    if (k === 'en' && recorded) {
+      recorded.has(full, 'en').then(yes => {
+        if (token !== gen) return;
+        if (!yes) { viaDevice(); return; }
+        recorded.speak(full, 'en', opt.rate, () => duck(true), ok => {
+          if (token !== gen) return;
+          if (ok) finish(true); else viaDevice();
+        });
+      });
+    } else viaDevice();
   }
   // fala e devolve uma Promise que termina quando a voz acaba (usada no modo "Contar a história").
-  // Segurança: se o navegador nunca avisar o fim, libera depois do tempo estimado de fala.
+  // Segurança: se nunca vier o aviso de fim, libera depois do tempo estimado de fala.
   function speakAsync(text) {
     return new Promise(resolve => {
-      if (!synth || !opt.voice) { resolve(false); return; }
-      const limit = setTimeout(() => resolve(true), 4000 + String(text).length * 110 / opt.rate);
+      if (!opt.voice) { resolve(false); return; }
+      const limit = setTimeout(() => resolve(true), 6000 + String(text).length * 110 / opt.rate);
       speak(text, { onDone: ok => { clearTimeout(limit); resolve(ok); } });
     });
   }
-  const quiet = () => { if (synth) synth.cancel(); duck(false); };
+  const quiet = () => { stopAll(); duck(false); };
 
   // ---- o que dizer sobre um elemento
   const isOn = el => el.getAttribute('aria-checked') === 'true';
@@ -310,6 +348,34 @@ EJ.a11y = (function () {
 
   // guia falado (botão "Ouvir o guia")
   $('tour').onclick = () => speak(T('a.tour'), { force: true });
+
+  // ---- introdução (intro.html)
+  $('intro-replay').onclick = () => location.assign('intro.html');
+  // "Ouvir o guia ao entrar" (marcado na introdução): toca o guia UMA vez, quando o globo carrega.
+  // Os navegadores só deixam a página falar depois de um clique/tecla NESTA página; se ainda não
+  // houve, avisa e toca na primeira tecla (essa tecla não faz mais nada).
+  let guideOnce = false;
+  try { guideOnce = sessionStorage.getItem('ej-guide-once') === 'true'; sessionStorage.removeItem('ej-guide-once'); }
+  catch (e) { /* sem armazenamento */ }
+  if (guideOnce) {
+    let played = false, waiting = false;
+    const play = () => {
+      if (played) return; played = true; welcomed = true;
+      removeEventListener('keydown', onKey, true); removeEventListener('pointerdown', play, true);
+      speak(T('a.tour'), { force: true });
+    };
+    const onKey = e => { e.preventDefault(); e.stopImmediatePropagation(); play(); };
+    const ready = () => {
+      if (played || waiting) return;
+      if (!navigator.userActivation || navigator.userActivation.hasBeenActive) { play(); return; }
+      waiting = true;
+      addEventListener('keydown', onKey, true);
+      addEventListener('pointerdown', play, true);
+      EJ.ui.announce(T('a.guideKey'));
+    };
+    addEventListener('ej-globe-ready', ready, { once: true });
+    setTimeout(ready, 20000);                                         // globo demorou: não espera mais
+  }
 
   // ================================================================== 5. IDIOMA
   // Caixa modal (<dialog>): prende o foco, Esc fecha. Aparece no 1º acesso; L e os botões reabrem.

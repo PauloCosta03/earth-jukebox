@@ -30,7 +30,7 @@ from pathlib import Path
 
 import numpy as np
 from netCDF4 import Dataset
-from PIL import Image
+from PIL import Image, ImageFilter
 
 ROOT = Path(__file__).resolve().parent.parent
 CACHE = ROOT / "data" / "cache"
@@ -143,28 +143,54 @@ CLOUD_DAYS = 16                                     # dias seguidos de nuvens re
 
 
 def build_clouds():
+    """☁️ Nuvens reais de dias seguidos (VIIRS, cor real) -> máscara de nuvem em tons de cinza.
+
+    Como separar nuvem do chão: nuvem é BRANCA e mais CLARA que a superfície. A superfície "limpa" de
+    cada ponto é estimada com as próprias imagens: o mínimo de brilho nos 16 dias × 2 satélites
+    (nuvens mudam de lugar, o chão fica). Assim neve, gelo e deserto — que estão lá todos os dias —
+    não viram nuvem. No mar aberto de latitudes baixas a superfície limpa é sempre escura, então lá
+    o fundo nunca passa de 0,12 (evita perder nuvens que ficam quase todos os dias no mesmo lugar).
+    O globo mistura os dias com movimento pelo vento (js/globe.js), sem "piscar".
+    """
     import datetime as dt
     print(f"☁️  nuvens (VIIRS cor real, {CLOUD_DAYS} dias seguidos a partir de 2024-03-13)")
     days = [dt.date(2024, 3, 13) + dt.timedelta(days=i) for i in range(CLOUD_DAYS)]
     sats = ("VIIRS_SNPP_CorrectedReflectance_TrueColor", "VIIRS_NOAA20_CorrectedReflectance_TrueColor")
     download_many([(GIBS_WMS.format(w=2048, h=1024, fmt="image/jpeg", layer=s, time=d),
                     CACHE / "gibs" / "clouds" / f"{s}_{d}.jpg") for d in days for s in sats], "nuvens")
-    # Superfície sem nuvens (Blue Marble): o que já é claro nela (gelo, neve, deserto) não é nuvem.
-    bm = Image.open(ROOT / "assets" / "textures" / "earth-day.jpg").convert("RGB").resize((2048, 1024))
-    surface = np.asarray(bm).astype("f4").min(axis=2) / 255
+    load = lambda d, s: np.asarray(Image.open(CACHE / "gibs" / "clouds" / f"{s}_{d}.jpg").convert("RGB"))
+    # 1) superfície limpa = brilho mínimo (canal mais escuro) em todas as passagens válidas
+    surface = np.ones((1024, 2048), "f4")
+    for d in days:
+        for s in sats:
+            rgb = load(d, s).astype("f4") / 255
+            mn = rgb.min(axis=2)
+            surface = np.minimum(surface, np.where(rgb.max(axis=2) > 0.03, mn, 1.0))
+    water = np.asarray(Image.open(ROOT / "assets" / "textures" / "earth-water.png").convert("L")
+                       .resize((2048, 1024))).astype("f4") / 255
+    lat = 90 - (np.arange(1024) + 0.5) * 180 / 1024
+    open_sea = (water > 0.5) & ((lat[:, None] < 45) & (lat[:, None] > -60))   # sem gelo marinho em março
+    surface = np.where(open_sea, np.minimum(surface, 0.12), surface)
+    # 2) máscara de cada dia
     OUT.mkdir(parents=True, exist_ok=True)
+    for old in list(OUT.glob("clouds_*.png")) + [OUT / "clouds.png"]:
+        if old.exists():
+            old.unlink()
+    # gelo polar (Groenlândia, Antártida, mar congelado): com o sol baixo de março a iluminação muda
+    # todo dia e o "mais claro que o chão" vira ruído — ali a máscara é atenuada
+    polar_ice = (np.abs(lat)[:, None] > 60) * np.clip((surface - 0.40) / 0.20, 0, 1)
+    # além de ~72° (sol muito baixo em março, gelo marinho) a detecção não é confiável: some suave
+    polar_ice = np.maximum(polar_ice, np.clip((np.abs(lat)[:, None] - 68) / 8, 0, 1))
     files = []
     for i, d in enumerate(days):
-        imgs = [np.asarray(Image.open(CACHE / "gibs" / "clouds" / f"{s}_{d}.jpg").convert("RGB")).astype("f4") / 255
-                for s in sats]
-        alpha = cloud_mask(imgs, surface)
-        name = f"assets/layers/clouds_{i:02d}.png"
-        Image.fromarray(alpha, "L").save(ROOT / name, optimize=True)
+        alpha = cloud_mask([load(d, s).astype("f4") / 255 for s in sats], surface)
+        alpha = (alpha * (1 - polar_ice)).astype(np.uint8)
+        name = f"assets/layers/clouds_{i:02d}.jpg"
+        # desfoque leve: tira o granulado pixel a pixel (e o JPEG fica menor)
+        img = Image.fromarray(alpha, "L").filter(ImageFilter.GaussianBlur(0.9))
+        img.save(ROOT / name, quality=80, optimize=True)
         files.append(name)
-    old = OUT / "clouds.png"
-    if old.exists():
-        old.unlink()
-    print(f"  -> assets/layers/clouds_00..{CLOUD_DAYS - 1:02d}.png  2048x1024")
+    print(f"  -> assets/layers/clouds_00..{CLOUD_DAYS - 1:02d}.jpg  2048x1024 (tons de cinza)")
     return {"images": files, "dates": [str(days[0]), str(days[-1])],
             "source": "NASA GIBS — VIIRS SNPP + NOAA-20 Corrected Reflectance (cor real), dias seguidos"}
 
@@ -174,14 +200,20 @@ def cloud_mask(imgs, surface):
     for rgb in imgs:
         mx, mn = rgb.max(axis=2), rgb.min(axis=2)
         valid = mx > 0.03                                    # preto = sem passagem do satélite
-        sat = (mx - mn) / np.maximum(mx, 1e-3)
-        brighter = mn - surface                              # quanto ficou mais claro que o chão
-        cloud = np.clip((brighter - 0.10) / 0.45, 0, 1) * np.clip(1 - sat * 2.2, 0, 1)
+        sat = (mx - mn) / np.maximum(mx, 1e-3)               # nuvem é branca (pouca saturação)
+        brighter = mn - surface                              # quanto ficou mais claro que o chão limpo
+        # sobre chão claro (gelo, deserto) exige mais contraste: evita "ruído" de iluminação virar nuvem
+        cloud = np.clip((brighter - 0.05 - 0.22 * surface) / 0.40, 0, 1) * np.clip(1 - sat * 2.0, 0, 1)
         clouds.append(np.where(valid, cloud, np.nan))
     # Nos dois satélites ao mesmo tempo: o mínimo remove o reflexo do sol (muda de lugar entre eles)
     a, b = clouds
     best = np.where(np.isnan(a), b, np.where(np.isnan(b), a, np.fmin(a, b)))
-    return (np.nan_to_num(best) ** 0.9 * 255).astype(np.uint8)
+    # sem nenhuma passagem (noite polar): borda suave em vez de um corte reto
+    have = ~np.isnan(best)
+    soft = np.asarray(Image.fromarray((have * 255).astype(np.uint8)).resize((256, 128), Image.BOX)
+                      .resize((2048, 1024), Image.BILINEAR)).astype("f4") / 255
+    out = np.nan_to_num(best) * np.clip(soft * 1.4 - 0.2, 0, 1)
+    return (np.clip(out, 0, 1) ** 0.9 * 255).astype(np.uint8)
 
 
 OZONE = "https://ozonewatch.gsfc.nasa.gov/data/{sat}/Y{year}/"

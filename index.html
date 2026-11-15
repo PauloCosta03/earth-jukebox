@@ -6,6 +6,20 @@
 <title>Earth Jukebox</title>
 <meta name="description" content="A música do clima: dados da NASA de 1880 a 2100 viram música e camadas sobre um globo 3D acessível.">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🌍</text></svg>">
+<script>
+  // primeiro acesso → abre a introdução (intro.html), que pergunta o idioma e apresenta o projeto.
+  // Se o navegador bloquear o armazenamento, segue direto para o site.
+  try {
+    // a introdução abre SEMPRE (ao abrir e no F5); só passa direto quando acabou de sair dela
+    var ejPass = sessionStorage.getItem('ej-intro-pass') === '1';
+    sessionStorage.removeItem('ej-intro-pass');
+    if (!ejPass) {
+      location.replace('intro.html');
+      // o resto desta página vira texto escondido: nenhum script ou textura carrega à toa durante a troca
+      document.write('<plaintext style="display:none">');
+    }
+  } catch (e) { /* sem armazenamento: sem introdução */ }
+</script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="css/style.css">
@@ -344,6 +358,8 @@
           <svg class="ic" aria-hidden="true"><use href="#i-help"/></svg> Ouvir o guia</button>
         <button id="opt-lang" class="btn" data-say="Idioma. Abre a escolha de idioma: português ou inglês. Atalho: tecla L.">
           <svg class="ic" aria-hidden="true"><use href="#i-lang"/></svg> Idioma: Português / English</button>
+        <button id="intro-replay" class="btn" data-say="Reassistir à introdução. Abre a apresentação inicial, onde você escolhe de novo o idioma e se quer ouvir o guia.">
+          <svg class="ic" aria-hidden="true"><use href="#i-again"/></svg> Reassistir à introdução</button>
       </div>
 
       <h3 class="group"><svg class="ic" aria-hidden="true"><use href="#i-keyboard"/></svg> Atalhos de teclado</h3>
@@ -385,10 +401,11 @@
         <li>Temperatura: <a href="https://data.giss.nasa.gov/gistemp/" target="_blank" rel="noopener">NASA GISTEMP v4</a></li>
         <li>CO₂: <a href="https://portal.nccs.nasa.gov/GISS_modelE/modelE_input_data/" target="_blank" rel="noopener">NASA GISS</a> (concentrações CMIP6)</li>
         <li>Gelo do Ártico: <a href="https://earth.gsfc.nasa.gov/cryo/data/arcticantarctic-sea-ice-time-series" target="_blank" rel="noopener">NASA GSFC</a></li>
-        <li>Nível do mar: <a href="https://podaac.jpl.nasa.gov/dataset/NASA_SSH_GMSL_INDICATOR" target="_blank" rel="noopener">NASA-SSH</a> (em integração)</li>
+        <li>Nível do mar: NASA JPL/GSFC — altimetria <a href="https://podaac.jpl.nasa.gov/NASA-SSH" target="_blank" rel="noopener">NASA-SSH</a> desde 1993 (<a href="https://doi.org/10.5281/zenodo.7702315" target="_blank" rel="noopener">dados</a>); projeções até 2100 calibradas no <a href="https://sealevel.nasa.gov/ipcc-ar6-sea-level-projection-tool" target="_blank" rel="noopener">NASA Sea Level Projection Tool</a></li>
         <li>Projeções: modelo climático <a href="https://data.giss.nasa.gov/modelE/cmip6/" target="_blank" rel="noopener">NASA GISS-E2.1-G</a> (CMIP6)</li>
         <li>Camadas: <a href="https://www.earthdata.nasa.gov/engage/open-data-services-software/earthdata-developer-portal/gibs-api" target="_blank" rel="noopener">NASA GIBS</a> (nuvens VIIRS, vegetação e queimadas MODIS), mapa GISTEMP, ventos e correntes GISS-E2.1-G, ozônio <a href="https://ozonewatch.gsfc.nasa.gov" target="_blank" rel="noopener">NASA Ozone Watch</a></li>
-        <li>Texturas: NASA Blue Marble &amp; Black Marble · 3D: three.js · Ícones: <a href="https://lucide.dev" target="_blank" rel="noopener">Lucide</a> (ISC)</li>
+        <li>Texturas: NASA Blue Marble NG (dia e relevo), NASA Black Marble 2016 (luzes), máscara de água MODIS · 3D: three.js · Ícones: <a href="https://lucide.dev" target="_blank" rel="noopener">Lucide</a> (ISC)</li>
+        <li>Voz offline de reserva: <a href="https://www.masswerk.at/mespeak/" target="_blank" rel="noopener">meSpeak</a> (eSpeak, GPL-3.0) · Narração em inglês dos acontecimentos gravada com voz sintética por IA</li>
         <li>Visualizações para ouvir: <a href="https://svs.gsfc.nasa.gov/" target="_blank" rel="noopener">NASA SVS</a> · <a href="https://earth.gov/" target="_blank" rel="noopener">Earth Information Center</a></li>
       </ul>
       <p class="note">A inundação e a borda do gelo usam relevo e extensão reais, com exagero visual para leitura em escala global. As projeções vêm de uma simulação do modelo da NASA por cenário SSP; detalhes e ajustes no README.</p>
@@ -461,6 +478,8 @@
 <script src="js/audio.js"></script>
 <script src="js/chart.js"></script>
 <script src="js/main.js"></script>
+<script src="js/narrator-fallback.js"></script>
+<script src="js/narrator-online.js"></script>
 <script src="js/a11y.js"></script>
 <script type="module" src="js/globe.js"></script>
 </body>

@@ -1,0 +1,33 @@
+/* The introduction shares the application's palette, typography and controls. */
+body{background:var(--bg);overflow:auto}
+#globe{visibility:visible!important;pointer-events:auto}
+#globe canvas{width:100%;height:100%}
+.intro-shell{position:relative;z-index:3;min-height:100svh;display:flex;flex-direction:column;pointer-events:none}
+.intro-shell>*{pointer-events:auto}
+.intro-top{display:flex;align-items:center;justify-content:space-between;gap:1rem;padding:1.5rem 2rem}
+.intro-credit{font-size:.8rem;color:var(--muted);margin:0}
+.intro-skip{background:var(--bg);border:1px solid var(--line);color:var(--muted);border-radius:var(--radius-sm);padding:.6rem .9rem;font-size:.8rem}
+.intro-content{margin-top:auto;padding:2rem 2rem 1rem;text-align:center;background:linear-gradient(transparent,var(--bg) 45%);pointer-events:none}
+.intro-content>*{pointer-events:auto}
+.intro-content h1{font-size:3rem;line-height:1.1;letter-spacing:0;margin:0 0 .75rem}
+.intro-caption{min-height:4.6rem;max-width:46rem;margin:.6rem auto 1.2rem;font-size:1.05rem;color:var(--text);text-wrap:balance}
+.intro-subtitle{color:var(--muted);font-size:.9rem;margin:.4rem 0}
+.intro-actions{display:flex;gap:.7rem;justify-content:center;flex-wrap:wrap;min-height:3.2rem}
+.intro-command{display:inline-flex;justify-content:center;align-items:center;gap:.5rem;background:var(--accent);color:var(--bg);border:1px solid var(--accent);border-radius:var(--radius-sm);min-height:3rem;padding:.65rem 1.2rem;font-weight:600}
+.intro-language{display:inline-flex;align-items:center;gap:.7rem;border:1px solid var(--line-strong);background:var(--panel-solid);color:var(--text);border-radius:var(--radius-sm);min-height:3.4rem;padding:.75rem 1.4rem}
+.intro-language:hover,.intro-language:focus-visible{border-color:var(--accent);color:var(--accent)}
+.intro-language small{color:var(--muted)}
+.intro-guide{display:flex;align-items:center;gap:.65rem;justify-content:center;margin:1.3rem 0;color:var(--muted);font-size:.9rem;flex-wrap:wrap}
+.intro-guide input{accent-color:var(--accent);width:1.1rem;height:1.1rem}
+.intro-footer{display:flex;justify-content:space-between;gap:1rem;align-items:center;padding:1rem 2rem 1.5rem;color:var(--muted);font-size:.75rem;background:var(--bg)}
+.intro-wave{display:flex;align-items:center;justify-content:center;gap:5px;height:28px;margin:0 auto 1rem;color:var(--on)}
+.intro-wave span{background:currentColor;width:3px;height:8px;animation:frequency 1.2s ease-in-out infinite;animation-play-state:paused}
+.intro-wave span:nth-child(2n){height:20px;animation-delay:.2s}
+.intro-wave span:nth-child(3n){height:26px;animation-delay:.4s}
+body.narrating .intro-wave span{animation-play-state:running}
+body.intro-stopped *{animation:none!important;transition:none!important}
+[hidden]{display:none!important}
+@keyframes frequency{50%{transform:scaleY(.35)}}
+@media(min-width:900px){.intro-content{padding-top:4rem}.intro-top{padding:1.8rem 2.5rem}.intro-content h1{font-size:3.5rem}}
+@media(max-width:600px){.intro-top{padding:1rem;align-items:flex-start}.intro-credit{max-width:9rem;font-size:.7rem}.intro-skip{font-size:.7rem;padding:.5rem}.intro-content{padding:2rem 1rem .5rem}.intro-content h1{font-size:2rem}.intro-caption{font-size:.9rem;min-height:5rem}.intro-footer{padding:1rem;font-size:.65rem}.intro-language{padding:.7rem 1rem}.intro-guide{font-size:.8rem}}
+@media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}

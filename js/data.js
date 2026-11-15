@@ -21,10 +21,11 @@ EJ.scenario = 'ssp245';
 // modelo GISS já têm a variação real de ano a ano). blendYears: emenda suave observado→projetado.
 EJ.config = { variability: false, blendYears: 25 };
 
-// Faixas cobrindo o pior cenário (SSP5-8.5 em 2100).
-EJ.RANGE = { temp: [-0.6, 4.3], co2: [280, 1150], ice: [0, 8], sea: [-220, 820] };
+// Faixas cobrindo o pior cenário (SSP5-8.5 em 2100). Nível do mar: mm desde 1993 (início das
+// medições por satélite da NASA; antes disso a série não tem valor e o app mostra "sem satélite").
+EJ.RANGE = { temp: [-0.6, 4.3], co2: [280, 1150], ice: [0, 8], sea: [0, 820] };
 // Expoente perceptivo: realça o início da escala (o clima de hoje já deve soar diferente de 1900).
-const GAMMA = { temp: 0.7, co2: 0.6, ice: 1, sea: 0.8 };
+const GAMMA = { temp: 0.7, co2: 0.6, ice: 1, sea: 0.6 };
 // Variabilidade interanual sintética (desvio-padrão) e memória (AR1), só para projeções esparsas.
 const VARIABILITY = { temp: { sigma: 0.085, phi: 0.45 }, ice: { sigma: 0.28, phi: 0.35 } };
 
@@ -83,10 +84,16 @@ EJ.interp = function (series, y) {
 
 // ---------------------------------------------------------------- observado x projetado
 // Último ano observado de cada série (ex.: gelo GSFC termina em 2017). Depois dele vale a projeção.
-EJ.lastObserved = {};
+// Primeiro ano observado: antes dele não há medição (gelo: satélites desde 1979; mar: desde 1993).
+EJ.lastObserved = {}; EJ.firstObserved = {};
 EJ.LAYERS.forEach(k => {
-  EJ.lastObserved[k] = Math.max(...Object.keys(EJ_HISTORICAL[k]).map(Number));
+  const years = Object.keys(EJ_HISTORICAL[k]).map(Number);
+  EJ.lastObserved[k] = Math.max(...years);
+  EJ.firstObserved[k] = Math.min(...years);
 });
+// Valor para o globo e o som quando a série ainda não tem medição: o PRIMEIRO valor medido pela NASA
+// (o texto e a narração continuam dizendo "sem satélite"; nada é inventado para trás).
+EJ.orFirst = (layer, v) => (v == null ? EJ_HISTORICAL[layer][EJ.firstObserved[layer]] : v);
 // Último ano com temperatura medida: tudo depois é rotulado como projeção.
 EJ.YEAR_NOW = EJ.lastObserved.temp;
 

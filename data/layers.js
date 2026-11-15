@@ -3,22 +3,22 @@
 window.EJ_LAYERS = {
  "clouds": {
   "images": [
-   "assets/layers/clouds_00.png",
-   "assets/layers/clouds_01.png",
-   "assets/layers/clouds_02.png",
-   "assets/layers/clouds_03.png",
-   "assets/layers/clouds_04.png",
-   "assets/layers/clouds_05.png",
-   "assets/layers/clouds_06.png",
-   "assets/layers/clouds_07.png",
-   "assets/layers/clouds_08.png",
-   "assets/layers/clouds_09.png",
-   "assets/layers/clouds_10.png",
-   "assets/layers/clouds_11.png",
-   "assets/layers/clouds_12.png",
-   "assets/layers/clouds_13.png",
-   "assets/layers/clouds_14.png",
-   "assets/layers/clouds_15.png"
+   "assets/layers/clouds_00.jpg",
+   "assets/layers/clouds_01.jpg",
+   "assets/layers/clouds_02.jpg",
+   "assets/layers/clouds_03.jpg",
+   "assets/layers/clouds_04.jpg",
+   "assets/layers/clouds_05.jpg",
+   "assets/layers/clouds_06.jpg",
+   "assets/layers/clouds_07.jpg",
+   "assets/layers/clouds_08.jpg",
+   "assets/layers/clouds_09.jpg",
+   "assets/layers/clouds_10.jpg",
+   "assets/layers/clouds_11.jpg",
+   "assets/layers/clouds_12.jpg",
+   "assets/layers/clouds_13.jpg",
+   "assets/layers/clouds_14.jpg",
+   "assets/layers/clouds_15.jpg"
   ],
   "dates": [
    "2024-03-13",

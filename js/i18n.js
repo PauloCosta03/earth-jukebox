@@ -67,7 +67,7 @@ EJ.i18n = (function () {
     'ev.future.text': ['{Scn}, o planeta fica {temp}, e o gás carbônico chega a {co2} partes por milhão.{ice} O mar sobe {sea} centímetros desde 1993.',
                        '{Scn}, the planet is {temp}, and carbon dioxide reaches {co2} parts per million.{ice} The sea rises {sea} centimeters since 1993.'],
     'ev.future.ice': [' O gelo do Ártico no fim do verão fica em {v} milhões de quilômetros quadrados.',
-                      ' Arctic sea ice at the end of summer stands at {v} million square kilometers.'],
+                      ' Late-summer Arctic ice is at {v} million square kilometers.'],
     'ev.t.2040': ['O mundo em 2040', 'The world in 2040'],
     'ev.t.2050': ['Meados do século', 'Mid-century'],
     'ev.t.2075': ['O mundo em 2075', 'The world in 2075'],
@@ -108,8 +108,10 @@ EJ.i18n = (function () {
     'desc.noFrame': ['Ainda sem quadro analisado.', 'No frame analyzed yet.'],
     'desc.projected': [', projeção no cenário {s}', ', projection in the {s} scenario'],
     'desc.measured': [', valor medido', ', measured value'],
-    'desc.values': ['Temperatura {temp} em relação à média de 1951 a 1980; CO₂ {co2}; gelo do Ártico {ice}; nível do mar {sea} em relação a 1993. ',
-                    'Temperature {temp} relative to the 1951 to 1980 average; CO₂ {co2}; Arctic ice {ice}; sea level {sea} relative to 1993. '],
+    'desc.values': ['Temperatura {temp} em relação à média de 1951 a 1980; CO₂ {co2}; gelo do Ártico {ice}; nível do mar {sea}. ',
+                    'Temperature {temp} relative to the 1951 to 1980 average; CO₂ {co2}; Arctic ice {ice}; sea level {sea}. '],
+    'desc.sea': ['{v} em relação a 1993', '{v} relative to 1993'],
+    'desc.seaNone': ['sem satélite (as medições começam em 1993)', 'no satellite (measurements start in 1993)'],
     'desc.music': ['A música está em {mode}: quanto mais quente, mais instável a harmonia. ', 'The music is in {mode}: the warmer it is, the more unstable the harmony. '],
     'desc.layers': ['Camadas ligadas no globo: {list}. ', 'Layers on the globe: {list}. '],
     'desc.noLayers': ['Nenhuma camada ligada. ', 'No layers turned on. '],
@@ -210,6 +212,7 @@ EJ.i18n = (function () {
     'a.storyOff': ['Contar a história desligado: a música toca sem pausas.', 'Tell the story off: the music plays without pauses.'],
     'a.rate': ['Velocidade da voz ajustada.', 'Voice speed adjusted.'],
     'a.langSet': ['Idioma: português do Brasil.', 'Language: English.'],
+    'a.guideKey': ['Aperte qualquer tecla para ouvir o guia.', 'Press any key to hear the guide.'],
     'a.tour': [
       'Guia do Earth Jukebox. No centro da tela está a Terra em 3D. Cada dado do clima medido pela NASA vira um instrumento: a temperatura é a melodia, o gás carbônico é um som grave, o gelo do Ártico são sinos e o nível do mar são ondas. Embaixo fica a barra de reprodução: o botão Tocar, o ano atual e a linha do tempo de 1880 a 2100. Até 2025 são medições; depois, projeções do modelo da NASA. Quanto mais quente, menos harmônica a música. No topo ficam cinco painéis: Camadas, para ligar o que aparece no globo e escolher o cenário do futuro; Instrumentos, para ouvir cada som sozinho; Ouvir, para transformar imagens e partituras em música; Acessibilidade; e Sobre. Atalhos: espaço toca e pausa; setas mudam o ano; colchetes pulam entre acontecimentos; D descreve a tela; V liga ou desliga esta narração; L troca o idioma; H esconde os botões; F deixa em tela cheia; mais e menos aproximam e afastam a Terra. Aperte Tab para começar a explorar. Boa viagem pelo clima do planeta.',
       'Earth Jukebox guide. In the center of the screen is the Earth in 3D. Each climate dataset measured by NASA becomes an instrument: temperature is the melody, carbon dioxide is a low drone, Arctic ice is bells and sea level is waves. At the bottom is the playback bar: the Play button, the current year and the timeline from 1880 to 2100. Up to 2025 these are measurements; after that, projections from NASA\'s model. The warmer it gets, the less harmonious the music. At the top are five panels: Layers, to turn on what appears on the globe and choose the future scenario; Instruments, to hear each sound alone; Listen, to turn images and scores into music; Accessibility; and About. Shortcuts: space plays and pauses; arrows change the year; brackets jump between events; D describes the screen; V turns this narration on or off; L changes the language; H hides the buttons; F goes full screen; plus and minus zoom the Earth in and out. Press Tab to start exploring. Enjoy your journey through the planet\'s climate.'],
@@ -338,6 +341,8 @@ EJ.i18n = (function () {
     ['#tour', SAY, 'Listen to the guide. A voice explains in one minute how to use Earth Jukebox.'],
     ['#opt-lang', LBL, ' Language: Português / English'],
     ['#opt-lang', SAY, 'Language. Opens the language choice: Portuguese or English. Shortcut: L key.'],
+    ['#intro-replay', LBL, ' Replay the introduction'],
+    ['#intro-replay', SAY, 'Replay the introduction. Opens the opening presentation, where you choose the language again and whether to hear the guide.'],
     ['#p-a11y h3.group', LBL, ' Keyboard shortcuts'],
     ['.keys dt:nth-of-type(2) kbd', TXT, 'Space'],
     ...['go to the next control (with narration)', 'play / pause', 'previous / next year (Shift: 10 years)',
@@ -360,10 +365,11 @@ EJ.i18n = (function () {
       '<li>Temperature: <a href="https://data.giss.nasa.gov/gistemp/" target="_blank" rel="noopener">NASA GISTEMP v4</a></li>' +
       '<li>CO₂: <a href="https://portal.nccs.nasa.gov/GISS_modelE/modelE_input_data/" target="_blank" rel="noopener">NASA GISS</a> (CMIP6 concentrations)</li>' +
       '<li>Arctic ice: <a href="https://earth.gsfc.nasa.gov/cryo/data/arcticantarctic-sea-ice-time-series" target="_blank" rel="noopener">NASA GSFC</a></li>' +
-      '<li>Sea level: <a href="https://podaac.jpl.nasa.gov/dataset/NASA_SSH_GMSL_INDICATOR" target="_blank" rel="noopener">NASA-SSH</a> (being integrated)</li>' +
+      '<li>Sea level: NASA JPL/GSFC — <a href="https://podaac.jpl.nasa.gov/NASA-SSH" target="_blank" rel="noopener">NASA-SSH</a> altimetry since 1993 (<a href="https://doi.org/10.5281/zenodo.7702315" target="_blank" rel="noopener">data</a>); projections to 2100 calibrated with the <a href="https://sealevel.nasa.gov/ipcc-ar6-sea-level-projection-tool" target="_blank" rel="noopener">NASA Sea Level Projection Tool</a></li>' +
       '<li>Projections: <a href="https://data.giss.nasa.gov/modelE/cmip6/" target="_blank" rel="noopener">NASA GISS-E2.1-G</a> climate model (CMIP6)</li>' +
       '<li>Layers: <a href="https://www.earthdata.nasa.gov/engage/open-data-services-software/earthdata-developer-portal/gibs-api" target="_blank" rel="noopener">NASA GIBS</a> (VIIRS clouds, MODIS vegetation and fires), GISTEMP map, GISS-E2.1-G winds and currents, ozone from <a href="https://ozonewatch.gsfc.nasa.gov" target="_blank" rel="noopener">NASA Ozone Watch</a></li>' +
-      '<li>Textures: NASA Blue Marble &amp; Black Marble · 3D: three.js · Icons: <a href="https://lucide.dev" target="_blank" rel="noopener">Lucide</a> (ISC)</li>' +
+      '<li>Textures: NASA Blue Marble NG (day and relief), NASA Black Marble 2016 (lights), MODIS water mask · 3D: three.js · Icons: <a href="https://lucide.dev" target="_blank" rel="noopener">Lucide</a> (ISC)</li>' +
+      '<li>Offline backup voice: <a href="https://www.masswerk.at/mespeak/" target="_blank" rel="noopener">meSpeak</a> (eSpeak, GPL-3.0) · English event narration recorded with an AI synthetic voice</li>' +
       '<li>Visualizations to listen to: <a href="https://svs.gsfc.nasa.gov/" target="_blank" rel="noopener">NASA SVS</a> · <a href="https://earth.gov/" target="_blank" rel="noopener">Earth Information Center</a></li>'],
     ['#p-about > p.note', TXT, 'Flooding and the ice edge use real relief and extent, with visual exaggeration so they can be read at a global scale. The projections come from one simulation of NASA\'s model per SSP scenario; details and adjustments in the README.'],
 
@@ -455,3 +461,5 @@ EJ.i18n = (function () {
   };
 })();
 EJ.t = (k, v) => EJ.i18n.t(k, v);
+// EJ.L('texto em português', 'text in English') → o texto no idioma atual (usado pela introdução)
+EJ.L = (pt, en) => (EJ.i18n.lang === 'en' ? en : pt);

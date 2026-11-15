@@ -1,10 +1,11 @@
-// Globo 3D (Three.js) — Terra com texturas NASA (Blue Marble, Black Marble,
-// relevo e máscara de oceano) e camadas dirigidas pelos dados:
+// Globo 3D (Three.js) — Terra com texturas da NASA (Blue Marble NG, Black Marble 2016,
+// topografia BMNG e máscara de água MODIS — scripts/build_textures.py) e camadas dirigidas pelos dados:
 //   🌊 inundação costeira (relevo real, exagero vertical p/ escala global)
 //   🧊 gelo marinho do Ártico (borda calculada da extensão NASA GSFC + ruído)
 //   🌃 luzes noturnas (acendem com a industrialização, no lado escuro)
 //   🌡️ mapa real de anomalia de temperatura (GISTEMP + modelo GISS) + atmosfera que engrossa com CO₂
-//   🌿 vegetação (MODIS NDVI)   🔥 queimadas (MODIS)   ☁️ nuvens (VIIRS)   🌬️ ventos (modelo GISS)
+//   🌿 vegetação (MODIS NDVI)   🔥 queimadas (MODIS)   ☁️ nuvens (VIIRS, levadas pelo vento)
+//   🌬️ ventos como fluido (modelo GISS, partículas com rastro na GPU)
 // As texturas das camadas são geradas por scripts/build_layers.py (metadados em data/layers.js).
 import * as THREE from 'three';
 import { OrbitControls } from './vendor/OrbitControls.js';
@@ -313,12 +314,14 @@ function init() {
       float glint = pow(max(dot(nw, h), 0.0), 600.0) * sea * dayAmt;
       vec3 col = day * (dayAmt * 1.05 + 0.05) + spec * vec3(0.9, 0.95, 1.0) * 0.55 + glint * vec3(1.0) * 1.2;
 
-      // --- 🌃 luzes das cidades no lado escuro (crescem com a industrialização)
-      vec3 city = texture2D(uNight, vUv).rgb * vec3(1.0, 0.84, 0.58) * 2.6;
-      col += city * uLightsOn * uLights
-           * (1.0 - smoothstep(0.0, 0.28, dayAmt))   // só na noite
+      // --- 🌃 luzes das cidades no lado escuro (NASA Black Marble 2016; crescem com a industrialização)
+      float nightSide = 1.0 - smoothstep(0.0, 0.28, dayAmt);
+      vec3 city = texture2D(uNight, vUv).rgb * vec3(1.0, 0.84, 0.58) * 1.7;
+      col += city * uLightsOn * uLights * nightSide
            * (1.0 - clamp(flood, 0.0, 1.0) * 0.85)   // cidades inundadas apagam
            * (1.0 - ice);
+      // --- 🌙 luar: o lado da noite fica azul-escuro (igual em todos os anos), não preto total
+      col += nightSide * (vec3(0.0012, 0.0060, 0.0120) * (0.6 + 0.4 * water) + day * vec3(0.020, 0.028, 0.045));
 
       // --- 🔥 queimadas: brasas que tremulam; só fogo frequente, mais forte no lado da noite
       float fire = smoothstep(0.3, 0.9, atlas(uFireTex, uFireGrid, uFireF).r);    // ignora focos raros
@@ -374,12 +377,73 @@ function init() {
   );
   scene.add(atmo);
 
-  // ---------- ☁️ nuvens: segunda esfera, um pouco maior, que deriva devagar ----------
-  // 16 dias seguidos de nuvens reais: mostra o dia A misturando com o dia B (uMix), em loop
-  const cloudTex = L.clouds ? (L.clouds.images || [L.clouds.image]).map(p => loader.load(p)) : [];
+  // ---------- 🌬️ campo de vento do ano atual (compartilhado por nuvens e ventos) ----------
+  // O atlas (data/layers.js → wind) tem um quadro por década; aqui os dois quadros em volta do ano
+  // são misturados na CPU numa textura pequena (144×90) que REPETE na longitude: a GPU interpola
+  // sem emenda no meridiano de 180°. R = vento para leste, G = para norte (1..255 → −15..+15 m/s).
+  const WM = L.wind;
+  const windW = WM ? WM.frameW : 1, windH = WM ? WM.frameH : 1;
+  const windData = new Uint8Array(windW * windH * 4).fill(128);   // 128 ≈ vento zero até carregar
+  const windCur = new THREE.DataTexture(windData, windW, windH);
+  windCur.wrapS = THREE.RepeatWrapping;
+  windCur.minFilter = windCur.magFilter = THREE.LinearFilter;
+  windCur.needsUpdate = true;
+  let windPx = null, windKey = '';
+  if (WM) new THREE.ImageLoader(manager).load(WM.atlas, img => {
+    const c = document.createElement('canvas');
+    c.width = img.width; c.height = img.height;
+    const g = c.getContext('2d'); g.drawImage(img, 0, 0);
+    windPx = g.getImageData(0, 0, img.width, img.height).data;
+    windKey = '';
+  });
+  // F = [quadro A, quadro B, mistura]; só refaz a textura quando algo mudou de verdade
+  function setWind(F) {
+    if (!windPx) return;
+    const key = F[0] + ':' + F[1] + ':' + F[2].toFixed(2);
+    if (key === windKey) return;
+    windKey = key;
+    const W = WM.cols * WM.frameW, t = F[2];
+    const base = f => [(f % WM.cols) * WM.frameW, Math.floor(f / WM.cols) * WM.frameH];
+    const [ax, ay] = base(F[0]), [bx, by] = base(F[1]);
+    for (let y = 0; y < windH; y++) {
+      const row = windH - 1 - y;                                  // textura: linha 0 = sul
+      for (let x = 0; x < windW; x++) {
+        const ia = ((ay + row) * W + ax + x) * 4, ib = ((by + row) * W + bx + x) * 4, o = (y * windW + x) * 4;
+        windData[o] = windPx[ia] + (windPx[ib] - windPx[ia]) * t;
+        windData[o + 1] = windPx[ia + 1] + (windPx[ib + 1] - windPx[ia + 1]) * t;
+        windData[o + 3] = 255;
+      }
+    }
+    windCur.needsUpdate = true;
+  }
+  // GLSL comum: vento (m/s) num ponto da textura (lon/lat → uv como nas outras camadas)
+  const WIND_GLSL = /* glsl */`
+    uniform sampler2D uWind;
+    vec2 windAt(vec2 uv){ return (texture2D(uWind, uv).rg * 255.0 - 1.0) / 254.0 * 30.0 - 15.0; }`;
+
+  // ---------- ☁️ nuvens: dias reais que se transformam um no outro, levados pelo vento ----------
+  // Antes: troca de imagem a cada 1,5 s → as nuvens "piscavam" (somem num lugar, aparecem em outro).
+  // Agora, entre o dia A e o dia B (uMix vai de 0 a 1):
+  //   • o dia A é levado PARA A FRENTE pelo vento real (até 1 dia de deslocamento) e
+  //   • o dia B é trazido DE VOLTA (de −1 dia até 0) — os dois tendem a se encontrar no meio,
+  //     como acontece com as nuvens de verdade de um dia para o outro;
+  //   • a troca A→B acontece em manchas (ruído), cada pedaço do céu no seu tempo, sem "piscar" geral.
+  // Imagens em tons de cinza carregadas como textura de 1 canal (4× menos memória de vídeo); os
+  // primeiros dias entram no carregamento e os outros chegam aos poucos, em segundo plano.
+  const cloudList = L.clouds ? (L.clouds.images || [L.clouds.image]) : [];
+  const cloudTex = [], cloudReady = [];
+  const lazyLoader = new THREE.TextureLoader();
+  function loadCloud(i, first) {
+    if (i >= cloudList.length || cloudTex[i]) return;
+    cloudTex[i] = (first ? loader : lazyLoader).load(cloudList[i], () => { cloudReady[i] = true; });
+    cloudTex[i].format = THREE.RedFormat;
+    cloudTex[i].wrapS = THREE.RepeatWrapping;
+  }
+  loadCloud(0, true); loadCloud(1, true);
+  const CLOUD_DAY_S = 7;                                         // segundos por dia de nuvem
   const cloudU = { uCloudA: { value: cloudTex[0] || null }, uCloudB: { value: cloudTex[1] || cloudTex[0] || null },
-                   uMix: { value: 0 }, uSunDir: { value: SUN }, uOn: { value: 1 } };
-  let cloudT = 0;                                                // "relógio" das nuvens, em dias
+                   uMix: { value: 0 }, uSunDir: { value: SUN }, uOn: { value: 1 }, uWind: { value: windCur } };
+  let cloudDay = 0, cloudF = 0;                                  // dia A atual e progresso até o dia B
   const clouds = new THREE.Mesh(
     new THREE.SphereGeometry(1.034, 96, 96),
     new THREE.ShaderMaterial({
@@ -387,110 +451,191 @@ function init() {
       fragmentShader: /* glsl */`
         uniform sampler2D uCloudA, uCloudB; uniform vec3 uSunDir; uniform float uOn, uMix;
         varying vec2 vUv; varying vec3 vN;
+        ${WIND_GLSL}
+        float hash(vec2 p){ vec3 p3 = fract(vec3(p.xyx) * .1031); p3 += dot(p3, p3.yzx + 33.33); return fract((p3.x + p3.y) * p3.z); }
+        float vnoise(vec2 p){
+          vec2 i = floor(p), f = fract(p), u = f * f * (3.0 - 2.0 * f);
+          return mix(mix(hash(i), hash(i + vec2(1,0)), u.x), mix(hash(i + vec2(0,1)), hash(i + vec2(1,1)), u.x), u.y);
+        }
         void main(){
-          float a = mix(texture2D(uCloudA, vUv).r, texture2D(uCloudB, vUv).r, uMix);  // 0 = céu limpo, 1 = nuvem densa
+          float lat = (vUv.y - 0.5) * 3.14159265;
+          vec2 w = windAt(vUv);
+          // 1 dia de vento em coordenadas de textura (u = 360° de longitude, v = 180° de latitude)
+          vec2 day = vec2(w.x / (111320.0 * max(cos(lat), 0.25)) / 360.0, w.y / 110540.0 / 180.0) * 86400.0;
+          day *= 1.0 - smoothstep(1.15, 1.40, abs(lat));          // perto dos polos não desloca
+          float f = uMix;
+          float a = texture2D(uCloudA, vUv - day * f).r;           // dia A levado adiante
+          float b = texture2D(uCloudB, vUv + day * (1.0 - f)).r;   // dia B trazido de volta
+          // troca em manchas: cada região passa de A para B num momento diferente
+          float n = vnoise(vUv * vec2(26.0, 13.0)) * 0.65 + vnoise(vUv * vec2(71.0, 35.5)) * 0.35;
+          float t = smoothstep(0.0, 1.0, clamp((f - n * 0.6) / 0.4, 0.0, 1.0));
+          float c = mix(a, b, t);                                  // 0 = céu limpo, 1 = nuvem densa
+          c = smoothstep(0.06, 0.85, c);                           // névoa fraca some, nuvem grossa fica
           float lit = clamp(dot(normalize(vN), normalize(uSunDir)) * 1.6 + 0.12, 0.0, 1.0);
-          gl_FragColor = vec4(vec3(lit * 1.02 + 0.03), a * uOn * 0.92);  // de noite fica escura
+          gl_FragColor = vec4(vec3(lit * 1.02 + 0.03), c * uOn * 0.9);   // de noite fica escura
           #include <tonemapping_fragment>
           #include <colorspace_fragment>
         }`
     })
   );
-  tilt.add(clouds);
 
-  // ---------- partículas que seguem um campo de velocidade (🌬️ ventos e 🌊 correntes) ----------
-  // Cada partícula é um traço curto: cabeça brilhante, cauda apagada, na direção do fluxo.
-  // o = { N: quantidade, R: raio da esfera, SPEED: graus/s por m/s, TAIL: cauda (s),
-  //       ref: velocidade (m/s) que dá brilho máximo, color: [r,g,b], oceanOnly: só no mar }
-  function makeFlow(m, o) {
-    if (!m) return null;
-    const N = o.N;
-    let data = null;                                             // pixels do atlas (RGBA)
-    new THREE.ImageLoader(manager).load(m.atlas, img => {
-      const c = document.createElement('canvas');
-      c.width = img.width; c.height = img.height;
-      const g = c.getContext('2d'); g.drawImage(img, 0, 0);
-      data = g.getImageData(0, 0, img.width, img.height).data;
+  clouds.renderOrder = 1;
+  earth.add(clouds);                                             // gira junto com a Terra (o vento move)
+
+  // ---------- 🌬️ ventos como FLUIDO: 65 mil partículas na placa de vídeo, com rastro ----------
+  // Técnica de "traçadores" de mecânica dos fluidos (como os mapas de vento animados):
+  //   1. ATUALIZA: as posições ficam numa textura 256×256 (uma partícula por pixel). Um shader move
+  //      cada uma pelo vento real (campo acima) e, de vez em quando, a faz renascer em outro lugar.
+  //   2. RASTRO: numa textura do planeta inteiro (2048×1024, mapa lat/lon) o quadro anterior é
+  //      redesenhado um pouco mais apagado e as partículas são pintadas por cima → linhas de corrente
+  //      contínuas que escorrem e somem devagar, como tinta num fluido.
+  //   3. MOSTRA: uma esfera logo acima das nuvens pinta o rastro (azul onde o vento é fraco, branco
+  //      onde é forte). Tudo na GPU: o processador quase não trabalha, e nada roda com a camada desligada.
+  // Posições guardadas em 2 bytes por eixo (precisão 1/65025) com arredondamento aleatório, para
+  // partículas lentas não "travarem" — funciona em qualquer placa com WebGL2, sem extensões.
+  function makeWindFluid() {
+    if (!WM || !renderer.capabilities.isWebGL2) return null;
+    const S = 128, N = S * S, TW = 2048, TH = 1024;              // 16.384 partículas
+    const rt = (w, h, o) => {
+      const t = new THREE.WebGLRenderTarget(w, h, { depthBuffer: false, stencilBuffer: false, generateMipmaps: false, ...o });
+      return t;
+    };
+    const near = { minFilter: THREE.NearestFilter, magFilter: THREE.NearestFilter };
+    const state = [rt(S, S, near), rt(S, S, near)];
+    const trail = [0, 1].map(() => {
+      const t = rt(TW, TH, { format: THREE.RedFormat, minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter });
+      t.texture.wrapS = THREE.RepeatWrapping;
+      return t;
     });
-    const [lo, hi] = m.range, W = m.cols * m.frameW;
-    const cellOf = (f, lat, lon) => {
-      const col = f % m.cols, row = Math.floor(f / m.cols);
-      const x = ((lon + 180) / 360 * m.frameW - 0.5 + m.frameW) % m.frameW;
-      const y = clamp((90 - lat) / 180 * m.frameH - 0.5, 0, m.frameH - 1);
-      return { col, row, x, y };
-    };
-    // velocidade (m/s) no quadro f, na posição lat/lon, com interpolação bilinear
-    function sample(f, lat, lon) {
-      const { col, row, x, y } = cellOf(f, lat, lon);
-      const x0 = Math.floor(x), y0 = Math.floor(y), fx = x - x0, fy = y - y0;
-      const x1 = (x0 + 1) % m.frameW, y1 = Math.min(y0 + 1, m.frameH - 1);
-      const px = (xx, yy, ch) => data[((row * m.frameH + yy) * W + col * m.frameW + xx) * 4 + ch];
-      const bil = ch => (px(x0, y0, ch) * (1 - fx) + px(x1, y0, ch) * fx) * (1 - fy)
-                      + (px(x0, y1, ch) * (1 - fx) + px(x1, y1, ch) * fx) * fy;
-      const dec = b => (b - 1) / 254 * (hi - lo) + lo;
-      return [dec(bil(0)), dec(bil(1))];
+    // posições iniciais: uniformes sobre a esfera (latitude = asen de um número aleatório)
+    const init = new Uint8Array(N * 4);
+    for (let i = 0; i < N; i++) {
+      const u = Math.random(), v = Math.asin(Math.random() * 2 - 1) / Math.PI + 0.5;
+      const pu = u * 255, pv = Math.min(v, 0.99999) * 255;
+      init[i * 4] = Math.round((pu % 1) * 255); init[i * 4 + 1] = Math.round((pv % 1) * 255);
+      init[i * 4 + 2] = Math.floor(pu); init[i * 4 + 3] = Math.floor(pv);
     }
-    // canal azul do atlas do oceano: 255 = mar, 0 = terra
-    function isSea(lat, lon) {
-      if (!data) return true;
-      const { col, row, x, y } = cellOf(0, lat, lon);
-      return data[((row * m.frameH + Math.round(y)) * W + col * m.frameW + Math.round(x) % m.frameW) * 4 + 2] > 0;
-    }
-    const lat = new Float32Array(N), lon = new Float32Array(N), age = new Float32Array(N), life = new Float32Array(N);
-    const spawn = i => {
-      for (let tries = 0; tries < 30; tries++) {
-        lat[i] = THREE.MathUtils.radToDeg(Math.asin(Math.random() * 2 - 1));   // uniforme na esfera
-        lon[i] = Math.random() * 360 - 180;
-        if (!o.oceanOnly || isSea(lat[i], lon[i])) break;
-      }
-      age[i] = 0; life[i] = 2 + Math.random() * 3;
-    };
-    for (let i = 0; i < N; i++) { spawn(i); age[i] = Math.random() * life[i]; }
-    const pos = new Float32Array(N * 6), col = new Float32Array(N * 6);
-    const geo = new THREE.BufferGeometry();
-    geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
-    geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
-    const mat = new THREE.LineBasicMaterial({ vertexColors: true, transparent: true, opacity: 0,
-                                              blending: THREE.AdditiveBlending, depthWrite: false });
-    const lines = new THREE.LineSegments(geo, mat);
-    earth.add(lines);                                            // gira junto com a Terra
-    const R = o.R, D2R = Math.PI / 180, [cr, cg, cb] = o.color;
-    // mesma conversão lat/lon -> xyz que a SphereGeometry usa para a textura
-    function xyz(la, lo, out, k) {
-      const phi = (lo + 180) * D2R, th = (90 - la) * D2R;
-      out[k] = -Math.cos(phi) * Math.sin(th) * R; out[k + 1] = Math.cos(th) * R; out[k + 2] = Math.sin(phi) * Math.sin(th) * R;
-    }
-    let respawned = false;
-    function step(dt, F, opacity) {
-      mat.opacity = opacity;
-      if (!data || opacity < 0.01) return;
-      if (o.oceanOnly && !respawned) {                           // dados chegaram: tira quem nasceu em terra
-        for (let i = 0; i < N; i++) if (!isSea(lat[i], lon[i])) spawn(i);
-        respawned = true;
-      }
-      for (let i = 0; i < N; i++) {
-        age[i] += dt;
-        const a = sample(F[0], lat[i], lon[i]), b = sample(F[1], lat[i], lon[i]);
-        const u = a[0] + (b[0] - a[0]) * F[2], v = a[1] + (b[1] - a[1]) * F[2];
-        const cl = Math.max(Math.cos(lat[i] * D2R), 0.05);
-        const dLon = u * o.SPEED / cl, dLat = v * o.SPEED;
-        lat[i] += dLat * dt; lon[i] += dLon * dt;
-        if (lon[i] > 180) lon[i] -= 360; if (lon[i] < -180) lon[i] += 360;
-        if (age[i] > life[i] || Math.abs(lat[i]) > 85 || (o.oceanOnly && !isSea(lat[i], lon[i]))) spawn(i);
-        xyz(lat[i], lon[i], pos, i * 6);
-        xyz(lat[i] - dLat * o.TAIL, lon[i] - dLon * o.TAIL, pos, i * 6 + 3);
-        const spd = Math.hypot(u, v), fade = Math.sin(Math.PI * age[i] / life[i]);
-        const br = fade * clamp(spd / o.ref, 0.25, 1) * 1.5;
-        col.set([cr * br, cg * br, cb * br, 0, 0, 0], i * 6);    // cabeça colorida, cauda apagada
-      }
-      geo.attributes.position.needsUpdate = true;
-      geo.attributes.color.needsUpdate = true;
+    const initTex = new THREE.DataTexture(init, S, S);
+    initTex.needsUpdate = true;
+    const RAND = /* glsl */`
+      float rand(vec2 p){ vec3 p3 = fract(vec3(p.xyx) * .1031); p3 += dot(p3, p3.yzx + 33.33); return fract((p3.x + p3.y) * p3.z); }
+      vec2 decodePos(vec4 c){ return vec2(c.r / 255.0 + c.b, c.g / 255.0 + c.a); }`;
+    const QUAD_VERT = /* glsl */`varying vec2 vUv; void main(){ vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }`;
+    const quadCam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+    const quad = m => { const q = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), m); q.frustumCulled = false; return q; };
+
+    // 1. atualizar posições
+    const updMat = new THREE.ShaderMaterial({
+      uniforms: { uState: { value: initTex }, uWind: { value: windCur }, uDt: { value: 0 },
+                  uSpeed: { value: 0.5 }, uSeed: { value: 0 } },
+      vertexShader: QUAD_VERT, depthTest: false, depthWrite: false,
+      fragmentShader: /* glsl */`
+        precision highp float;
+        uniform sampler2D uState; uniform float uDt, uSpeed, uSeed;
+        varying vec2 vUv;
+        ${WIND_GLSL}
+        ${RAND}
+        void main(){
+          vec2 pos = decodePos(texture2D(uState, vUv));
+          vec2 w = windAt(pos);
+          float lat = (pos.y - 0.5) * 3.14159265;
+          pos += vec2(w.x / max(cos(lat), 0.08) / 360.0, w.y / 180.0) * uSpeed * uDt;   // uSpeed: graus/s por m/s
+          vec2 seed = vUv * 517.3 + uSeed;
+          float life = 0.0035 + length(w) * 0.0004;                // ~5 s de vida; vento forte renova mais
+          if (rand(seed) < life * uDt * 60.0 || pos.y < 0.025 || pos.y > 0.975)
+            pos = vec2(rand(seed + 1.7), asin(rand(seed + 3.1) * 2.0 - 1.0) / 3.14159265 + 0.5);
+          pos += (vec2(rand(seed + 5.3), rand(seed + 7.9)) - 0.5) / 65025.0;   // arredondamento aleatório
+          pos = vec2(fract(pos.x), clamp(pos.y, 0.0, 0.99998));
+          gl_FragColor = vec4(fract(pos * 255.0), floor(pos * 255.0) / 255.0);
+        }`
+    });
+    const updScene = new THREE.Scene(); updScene.add(quad(updMat));
+
+    // 2. rastro: quadro anterior mais apagado + partículas por cima
+    // apaga um pouco o quadro anterior: as linhas antigas somem devagar e formam a cauda.
+    // (−0,5/255: sem isso, valores baixos "travariam" na precisão de 8 bits e nunca sumiriam)
+    const fadeMat = new THREE.ShaderMaterial({
+      uniforms: { uPrev: { value: null }, uFade: { value: 0.97 } },
+      vertexShader: QUAD_VERT, depthTest: false, depthWrite: false, blending: THREE.NoBlending,
+      fragmentShader: /* glsl */`
+        uniform sampler2D uPrev; uniform float uFade; varying vec2 vUv;
+        void main(){ gl_FragColor = vec4(max(texture2D(uPrev, vUv).r * uFade - 0.5 / 255.0, 0.0)); }`
+    });
+    const fadeQuad = quad(fadeMat); fadeQuad.renderOrder = 0;
+    // cada partícula = um segmento da posição ANTERIOR até a NOVA: o rastro fica contínuo mesmo
+    // quando o computador desenha poucos quadros por segundo
+    const idx = new Float32Array(N * 2 * 3);
+    for (let i = 0; i < N; i++) { idx[i * 6] = i; idx[i * 6 + 3] = i; idx[i * 6 + 4] = 1; }
+    const segGeo = new THREE.BufferGeometry();
+    segGeo.setAttribute('position', new THREE.BufferAttribute(idx, 3));    // x = partícula, y = 0 antes / 1 agora
+    const drawMat = new THREE.ShaderMaterial({
+      uniforms: { uOld: { value: null }, uNew: { value: null }, uWind: { value: windCur } },
+      depthTest: false, depthWrite: false, transparent: true, blending: THREE.AdditiveBlending,
+      vertexShader: /* glsl */`
+        uniform sampler2D uOld, uNew; varying float vSpd;
+        ${WIND_GLSL}
+        ${RAND}
+        void main(){
+          vec2 st = (vec2(mod(position.x, ${S}.0), floor(position.x / ${S}.0)) + 0.5) / ${S}.0;
+          vec2 pNew = decodePos(texture2D(uNew, st)), pOld = decodePos(texture2D(uOld, st));
+          vec2 d = abs(pNew - pOld);
+          bool jump = d.x > 0.02 || d.y > 0.02;                    // renasceu ou cruzou 180°: sem traço
+          vec2 pos = (position.y > 0.5 || jump) ? pNew : pOld;
+          vSpd = length(windAt(pNew));
+          gl_Position = vec4(pos * 2.0 - 1.0, 0.0, 1.0);
+        }`,
+      fragmentShader: /* glsl */`
+        varying float vSpd;
+        void main(){ gl_FragColor = vec4(vec3(0.16 + 0.34 * smoothstep(0.5, 9.0, vSpd)), 1.0); }`
+    });
+    const segs = new THREE.LineSegments(segGeo, drawMat); segs.frustumCulled = false; segs.renderOrder = 1;
+    const trailScene = new THREE.Scene(); trailScene.add(fadeQuad, segs);
+
+    // 3. esfera que mostra o rastro (gira com a Terra)
+    const dispMat = new THREE.ShaderMaterial({
+      uniforms: { uTrail: { value: trail[0].texture }, uWind: { value: windCur }, uOn: { value: 0 }, uSunDir: { value: SUN } },
+      vertexShader: VERT, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
+      fragmentShader: /* glsl */`
+        uniform sampler2D uTrail; uniform float uOn; uniform vec3 uSunDir;
+        varying vec2 vUv; varying vec3 vN;
+        ${WIND_GLSL}
+        void main(){
+          float t = texture2D(uTrail, vUv).r;
+          float spd = length(windAt(vUv));
+          vec3 col = mix(vec3(0.28, 0.58, 1.0), vec3(0.88, 1.0, 1.0), smoothstep(1.5, 10.0, spd));
+          float side = 0.75 + 0.25 * smoothstep(-0.3, 0.3, dot(normalize(vN), normalize(uSunDir)));  // um pouco mais suave à noite
+          gl_FragColor = vec4(col * min(t * 1.6, 1.0) * uOn * side, 1.0);
+          #include <tonemapping_fragment>
+          #include <colorspace_fragment>
+        }`
+    });
+    const shell = new THREE.Mesh(new THREE.SphereGeometry(1.038, 128, 64), dispMat);
+    shell.visible = false;
+    shell.renderOrder = 2;                                        // depois das nuvens: o vento fica por cima
+    earth.add(shell);
+
+    let cur = 0, tcur = 0;
+    function step(dt, on) {
+      shell.visible = on > 0.01;
+      dispMat.uniforms.uOn.value = on;
+      if (!shell.visible || dt <= 0) return;                    // desligado ou congelado: GPU livre
+      updMat.uniforms.uDt.value = dt;
+      updMat.uniforms.uSeed.value = Math.random() * 1000;
+      const old = updMat.uniforms.uState.value;                   // posições antes deste passo
+      renderer.setRenderTarget(state[1 - cur]); renderer.render(updScene, quadCam);
+      updMat.uniforms.uState.value = state[1 - cur].texture; cur = 1 - cur;
+      fadeMat.uniforms.uPrev.value = trail[tcur].texture;
+      fadeMat.uniforms.uFade.value = Math.pow(0.982, dt * 60);    // rastro some em ~2 s
+      drawMat.uniforms.uOld.value = old;
+      drawMat.uniforms.uNew.value = state[cur].texture;
+      renderer.setRenderTarget(trail[1 - tcur]); renderer.render(trailScene, quadCam);
+      tcur = 1 - tcur;
+      renderer.setRenderTarget(null);
+      dispMat.uniforms.uTrail.value = trail[tcur].texture;
     }
     return { step };
   }
-
-  // 🌬️ vento médio da década (modelo GISS), acima das nuvens; branco-ciano
-  const wind = makeFlow(L.wind, { N: 8000, R: 1.038, SPEED: 0.9, TAIL: 1.1, ref: 5, color: [0.75, 0.95, 1.0] });
+  const wind = makeWindFluid();
   // 🌊 as correntes do mar são desenhadas no próprio shader da Terra (água em movimento)
 
   // Qual quadro do atlas mostrar para um ano: devolve { idx, ok } (ok=false se não há dado)
@@ -530,8 +675,8 @@ function init() {
   function update(v) {
     T.heat = EJ.level('temp', v.temp);                           // mesma curva do áudio (data.js)
     T.lights = clamp((logistic(v.year) - L0) / (L1 - L0), 0, 1.25);
-    T.sea = clamp(v.sea / 800, 0, 1);                            // só a subida pós-1993 inunda
-    const A = (v.ice == null ? 7.8 : v.ice) * 1e12;              // m²
+    T.sea = clamp((v.sea ?? 0) / 800, 0, 1);                     // só a subida pós-1993 inunda
+    const A = EJ.orFirst('ice', v.ice) * 1e12;                   // m² (antes de 1979: 1º valor da NASA)
     T.iceEdge = THREE.MathUtils.radToDeg(Math.asin(clamp(1 - A / 2.551e14, -1, 1)));
     T.atmo = EJ.level('co2', v.co2);
     T.year = v.year;
@@ -571,18 +716,24 @@ function init() {
     U.uOzoneF.value.set(...fO.F);
     on.ozone += ((layers.ozone && fO.ok ? 1 : 0) - on.ozone) * k;
     U.uHeatOn.value = on.heat; U.uNdviOn.value = on.ndvi; U.uFireOn.value = on.fire; U.uOzoneOn.value = on.ozone;
+    setWind(fW.F);                                              // vento da década atual (nuvens + ventos)
     cloudU.uOn.value += ((layers.clouds ? 1 : 0) - cloudU.uOn.value) * k;
-    if (layers.spin) {                                          // com a Terra parada, as nuvens também param
-      clouds.rotation.y += dt * 0.057;                          // nuvens um pouco mais rápidas que a Terra
-      cloudT += dt / 1.5;                                       // 1 dia de nuvens a cada 1,5 s
-      if (cloudTex.length > 1) {
-        const n = cloudTex.length, i = Math.floor(cloudT) % n, f = cloudT - Math.floor(cloudT);
-        cloudU.uCloudA.value = cloudTex[i];
-        cloudU.uCloudB.value = cloudTex[(i + 1) % n];
-        cloudU.uMix.value = f * f * (3 - 2 * f);                // transição suave (smoothstep)
+    clouds.visible = cloudU.uOn.value > 0.005;
+    if (layers.spin && cloudList.length > 1) {                  // com a Terra parada, as nuvens também param
+      const n = cloudList.length, next = (cloudDay + 1) % n;
+      loadCloud(next); loadCloud((cloudDay + 2) % n);           // os próximos dias chegam em segundo plano
+      if (cloudReady[cloudDay] && cloudReady[next]) {           // só avança quando o próximo dia já carregou
+        cloudF += dt / CLOUD_DAY_S;
+        if (cloudF >= 1) { cloudF -= 1; cloudDay = next; }
       }
+      const b = (cloudDay + 1) % n;
+      cloudU.uCloudA.value = cloudTex[cloudDay];
+      cloudU.uCloudB.value = cloudReady[b] ? cloudTex[b] : cloudTex[cloudDay];
+      cloudU.uMix.value = cloudReady[b] ? cloudF : 0;
     }
-    if (wind) wind.step(dt, fW.F, on.wind * 0.9);
+    // o vento continua escorrendo com a Terra parada (dá para observar uma região); só congela
+    // com a opção "reduzir movimento"
+    if (wind) wind.step(document.body.classList.contains('reduce-motion') ? 0 : dt, on.wind);
     on.ocean += ((layers.ocean ? 1 : 0) - on.ocean) * k;          // correntes: campo fixo (clima atual)
     U.uOceanOn.value = on.ocean;
     U.uAxis.value.set(0, 1, 0).applyQuaternion(tilt.quaternion);   // eixo inclinado 23,4°

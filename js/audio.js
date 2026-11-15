@@ -176,15 +176,15 @@ EJ.audio = (function () {
     lp.frequency.setTargetAtTime(280 + c * 900, now, .2);
 
     // Gelo → sinos (inarmônicos), na escala atual; menos gelo = menos sinos
-    const ice = v.ice == null ? 7.5 : v.ice;
+    const ice = EJ.orFirst('ice', v.ice);                 // antes de 1979: 1º valor medido (NASA GSFC)
     if (rnd() < clamp(ice / 7.5) * .9) {
       const f = degFreq(KEY * 8, steps, pick(rnd, [0, 2, 4]) % len);
       tone({ freq: f, dur: 1.2, type: 'sine', vol: .055, layer: 'ice', pan: rnd() * 1.6 - .8 });
       tone({ freq: f * 2.76, dur: .5, type: 'sine', vol: .018, layer: 'ice' });
     }
 
-    // Mar → ondas
-    const s = EJ.level('sea', v.sea);
+    // Mar → ondas (antes de 1993 não há satélite: ondas no mínimo, um mar calmo de fundo)
+    const s = v.sea == null ? 0 : EJ.level('sea', v.sea);
     noiseGain.gain.setTargetAtTime(.01 + s * .12, now, .3);
     noiseFilter.frequency.setTargetAtTime(300 + s * 1500, now, .3);
   }

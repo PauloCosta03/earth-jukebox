@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Earth Jukebox — Boas-vindas / Welcome</title>
+<meta name="description" content="Uma jornada científica e musical pelo planeta, pelo Grupo Orichalcum para o NASA Space Apps Challenge.">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css">
+<link rel="stylesheet" href="css/intro.css">
+<script type="importmap">{"imports":{"three":"./js/vendor/three.module.min.js"}}</script>
+</head>
+<body>
+<div id="globe" role="img" aria-label="Planeta Terra em três dimensões / Three-dimensional Earth"></div>
+<div id="loading" role="status"><div class="spin" aria-hidden="true"></div><p>Carregando a Terra / Loading Earth…</p></div>
+<main class="intro-shell">
+  <header class="intro-top">
+    <p class="intro-credit">Grupo Orichalcum<br>NASA Space Apps Challenge</p>
+    <button id="intro-skip" class="intro-skip" type="button" hidden>Pular introdução (ESC)</button>
+  </header>
+  <section class="intro-content" aria-labelledby="intro-title">
+    <div class="intro-wave" aria-hidden="true"><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span></div>
+    <h1 id="intro-title">Earth Jukebox</h1>
+    <p class="intro-subtitle">A música do planeta <span aria-hidden="true">·</span> <span lang="en">The music of our planet</span></p>
+    <p id="intro-caption" class="intro-caption" aria-live="polite">Escolha seu idioma para continuar. Aperte qualquer tecla para ouvir as opções.<br><span lang="en">Choose your language to continue. Press any key to hear the options.</span></p>
+    <section id="intro-choice" aria-labelledby="choice-title">
+      <h2 id="choice-title" class="intro-subtitle" tabindex="-1">Escolha seu idioma / Choose your language</h2>
+      <div class="intro-actions">
+        <button class="intro-language" data-language="pt" type="button" lang="pt-BR" aria-keyshortcuts="P">Português brasileiro <small>P →</small></button>
+        <button class="intro-language" data-language="en" type="button" lang="en" aria-keyshortcuts="E">English <small>E →</small></button>
+      </div>
+    </section>
+    <section id="intro-entry" hidden>
+      <label class="intro-guide"><input id="intro-guide" type="checkbox"> <span id="intro-guide-label">Ouvir o guia ao entrar</span></label>
+      <div class="intro-actions"><button id="intro-enter" class="intro-command" type="button">Entrar →</button></div>
+    </section>
+  </section>
+  <footer class="intro-footer"><span id="intro-footer-label">Ciência · Música · Terra<br><span lang="en">Science · Music · Earth</span></span><span id="intro-progress">01 / 03</span></footer>
+</main>
+<script src="js/i18n.js"></script>
+<script src="js/intro-preferences.js"></script>
+<script src="data/historical.js"></script>
+<script src="data/projections.js"></script>
+<script src="data/layers.js"></script>
+<script src="js/data.js"></script>
+<script src="js/narrator-fallback.js?v=20261115-voice3"></script>
+<script src="js/narrator-online.js?v=20261115-fast1"></script>
+<script src="js/intro.js"></script>
+<script type="module" src="js/globe.js"></script>
+</body>
+</html>
