@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(sed -n '/function describe/,/^  }/p' js/vision.js)",
+      "Bash(PYTHONIOENCODING=utf-8 .venv/Scripts/python \"C:/Users/houin/AppData/Local/Temp/claude/63d4f71952a3ed59/8d0d3856-31f4-4c60-b868-90d21ef9f18d/scratchpad/edit_modules_en.py\")"
+    ]
+  }
+}

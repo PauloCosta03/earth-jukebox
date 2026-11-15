@@ -3,27 +3,33 @@
     "temp": "NASA GISS GISTEMP v4, °C vs. 1951–1980",
     "co2": "NASA GISS, CO2 global (ppm) usado no ModelE/CMIP6",
     "ice": "NASA GSFC, extensão de setembro (mi km²), 1979–2017",
-    "sea": "PENDENTE — valores anteriores mantidos (ver README, seção Dados)",
+    "sea": "NASA (JPL/GSFC, NASA Sea Level Change) — GMSL por altimetria NASA-SSH, média anual, mm vs. 1993; arquivo GMSL_extrap_1993_2050.2026_02_05.txt (doi:10.5281/zenodo.7702315); sem dado antes de 1993",
     "summary": "Somente dados abertos da NASA — ver README, seção Dados"
   },
   "projections": {
     "temp": "NASA GISS-E2.1-G (CMIP6), média global de tas; ancorado à média GISTEMP 2015–2024",
     "co2": "NASA GISS, GHG.CMIP6 por cenário (ppm)",
     "ice": "NASA GISS-E2.1-G (CMIP6), extensão de setembro (siconca >= 15%); bias corrigido vs. GSFC 1979–2014",
-    "sea": "PENDENTE — valores anteriores mantidos (ver README, seção Dados)"
+    "sea": "Semi-empírico (Rahmstorf 2007) dirigido pela temperatura GISS-E2.1-G; parte da taxa atual da NASA e chega em 2100 à mediana do NASA Sea Level Projection Tool (IPCC AR6, tab. 9.9), convertida para a base 1993 com a série observada da NASA"
   },
   "adjustments": {
+    "sea_rate_now_mm_yr": 4.4,
     "temp_anchor_shift_C": {
       "ssp126": -0.002,
       "ssp245": 0.014,
       "ssp585": -0.004
     },
-    "ice_bias_ratio": 0.623
+    "ice_bias_ratio": 0.623,
+    "sea_2100_anchor_mm_vs_1993": {
+      "ssp126": 472,
+      "ssp245": 592,
+      "ssp585": 802
+    }
   },
   "last_observed_year": {
     "temp": 2025,
     "co2": 2014,
     "ice": 2017,
-    "sea": 2024
+    "sea": 2025
   }
 }

@@ -3,22 +3,22 @@
 window.EJ_LAYERS = {
  "clouds": {
   "images": [
-   "assets/layers/clouds_00.png",
-   "assets/layers/clouds_01.png",
-   "assets/layers/clouds_02.png",
-   "assets/layers/clouds_03.png",
-   "assets/layers/clouds_04.png",
-   "assets/layers/clouds_05.png",
-   "assets/layers/clouds_06.png",
-   "assets/layers/clouds_07.png",
-   "assets/layers/clouds_08.png",
-   "assets/layers/clouds_09.png",
-   "assets/layers/clouds_10.png",
-   "assets/layers/clouds_11.png",
-   "assets/layers/clouds_12.png",
-   "assets/layers/clouds_13.png",
-   "assets/layers/clouds_14.png",
-   "assets/layers/clouds_15.png"
+   "assets/layers/clouds_00.jpg",
+   "assets/layers/clouds_01.jpg",
+   "assets/layers/clouds_02.jpg",
+   "assets/layers/clouds_03.jpg",
+   "assets/layers/clouds_04.jpg",
+   "assets/layers/clouds_05.jpg",
+   "assets/layers/clouds_06.jpg",
+   "assets/layers/clouds_07.jpg",
+   "assets/layers/clouds_08.jpg",
+   "assets/layers/clouds_09.jpg",
+   "assets/layers/clouds_10.jpg",
+   "assets/layers/clouds_11.jpg",
+   "assets/layers/clouds_12.jpg",
+   "assets/layers/clouds_13.jpg",
+   "assets/layers/clouds_14.jpg",
+   "assets/layers/clouds_15.jpg"
   ],
   "dates": [
    "2024-03-13",
@@ -157,5 +157,33 @@ window.EJ_LAYERS = {
    1995
   ],
   "source": "NASA Ozone Watch (GSFC) — TOMS Nimbus-7, Meteor-3, Earth Probe e OMI; média 20/set–20/out"
+ },
+ "ocean": {
+  "atlas": "assets/layers/ocean.png",
+  "cols": 1,
+  "rows": 1,
+  "frameW": 288,
+  "frameH": 180,
+  "range": [
+   -1.0,
+   1.0
+  ],
+  "frames": {
+   "hist": [
+    1985,
+    2014,
+    0,
+    30
+   ]
+  },
+  "source": "NASA GISS-E2.1-G (CMIP6), altura do mar (zos) -> correntes geostróficas, média 1985–2014"
+ },
+ "ocean_lic": {
+  "image": "assets/layers/ocean_lic.png",
+  "source": "LIC das correntes geostróficas (ocean.png)"
+ },
+ "waves": {
+  "image": "assets/textures/waves.png",
+  "source": "gerada (visual, não é dado)"
  }
 };

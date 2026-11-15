@@ -6,27 +6,30 @@ Gera data/historical.js e data/projections.js a partir de:
   - Temperatura ....... NASA GISS GISTEMP v4 (anomalia global anual, base 1951–1980)
   - CO2 ............... NASA GISS, concentrações globais usadas no ModelE (CMIP6), 1880–2014
   - Gelo do Ártico .... NASA GSFC Cryospheric Sciences Lab, extensão mensal (set.), 1979–2017
-  - Nível do mar ...... NASA-SSH GMSL Indicator (PO.DAAC) — exige token Earthdata (gratuito)
+  - Nível do mar ...... NASA (JPL/GSFC, programa NASA Sea Level Change): nível médio global por
+                        altimetria de satélite (NASA-SSH: TOPEX/Poseidon, Jason-1/2/3, Sentinel-6),
+                        1993 em diante. Arquivo aberto (sem login) publicado pelos autores da NASA no
+                        Zenodo e indicado pelo próprio NASA SVS (svs.gsfc.nasa.gov/5611). Antes de 1993
+                        não há satélite: o app mostra "sem satélite" (não inventamos valores).
 
   PROJEÇÕES (cenários SSP1-2.6, SSP2-4.5, SSP5-8.5)
   - CO2 ............... NASA GISS, arquivos GHG.CMIP6 por cenário (forçante do ModelE)
   - Temperatura ....... modelo climático da NASA GISS-E2.1-G (CMIP6, r1i1p1f2), média global de `tas`
   - Gelo do Ártico .... GISS-E2.1-G, extensão de setembro a partir de `siconca` (células >= 15%)
+  - Nível do mar ...... modelo semi-empírico (Rahmstorf 2007) dirigido pela temperatura anual de cada
+                        cenário e calibrado para atingir, em 2100, a mediana do NASA Sea Level Projection
+                        Tool (IPCC AR6, tabela 9.9) — convertida da base 1995–2014 para 1993 com a
+                        própria série da NASA. A taxa atual vem do mesmo arquivo da NASA.
 
 Uso:
     pip install -r scripts/requirements.txt     # netCDF4 + numpy (só para as projeções do modelo)
     python scripts/fetch_nasa_data.py
-
-Opcional (nível do mar observado):
-    set EARTHDATA_TOKEN=<token de https://urs.earthdata.nasa.gov>   (Windows)
-    export EARTHDATA_TOKEN=<token>                                  (Linux/Mac)
 
 Os arquivos do modelo (~350 MB) ficam em cache em data/cache/ e são baixados uma vez só.
 Se uma fonte falhar, a série correspondente mantém os valores atuais e o motivo é impresso.
 """
 import json
 import math
-import os
 import re
 import sys
 import urllib.request
@@ -48,11 +51,15 @@ URL = {
     "ghg_hist": "https://portal.nccs.nasa.gov/GISS_modelE/modelE_input_data/GHG.CMIP6.1-2014.txt",
     "ghg_ssp": "https://portal.nccs.nasa.gov/GISS_modelE/modelE_input_data/GHG.CMIP6.2015-2500.{ssp}.txt",
     "ice_gsfc": "https://earth.gsfc.nasa.gov/sites/default/files/neptune/files/NH_IceExt_Monthly_1978-2017.txt",
-    "gmsl": "https://archive.podaac.earthdata.nasa.gov/podaac-ops-cumulus-protected/"
-            "NASA_SSH_GMSL_INDICATOR/NASA_SSH_GMSL_INDICATOR.txt",
+    # NASA GMSL (Willis, Hamlington & Fournier — NASA JPL), "Global Mean Sea Level, Trajectory and
+    # Extrapolation", CC-BY-4.0, doi:10.5281/zenodo.7702315 (sempre a versão mais recente)
+    "gmsl": "https://zenodo.org/api/records/7702315/versions/latest",
     "giss_model": "https://portal.nccs.nasa.gov/datashare/giss_cmip6/{mip}/NASA-GISS/GISS-E2-1-G/"
                   "{exp}/r1i1p1f2/{table}/{var}/gn/{ver}/{var}_{table}_GISS-E2-1-G_{exp}_r1i1p1f2_gn_{period}.nc",
 }
+# Nível do mar em 2100, mediana global (m, relativo a 1995–2014): NASA Sea Level Projection Tool
+# (https://sealevel.nasa.gov/ipcc-ar6-sea-level-projection-tool), mesmos números da tabela 9.9 do AR6.
+AR6_GMSL_2100_M = {"ssp126": 0.44, "ssp245": 0.56, "ssp585": 0.77}
 MODEL_VER = {"historical": "v20190903", "ssp": "v20200115"}
 
 # ---------------------------------------------------------------- utilidades
@@ -144,27 +151,33 @@ def ice_gsfc():
 
 
 def sea_gmsl():
-    """NASA-SSH GMSL (cm) -> média anual em mm, referência 1993 = 0. Exige EARTHDATA_TOKEN."""
-    token = os.environ.get("EARTHDATA_TOKEN")
-    if not token:
-        raise RuntimeError("EARTHDATA_TOKEN não definido (conta gratuita em urs.earthdata.nasa.gov)")
-    text = get_text(URL["gmsl"], {"Authorization": f"Bearer {token}"})
-    by_year = {}
-    for line in text.splitlines():
+    """NASA GMSL por altimetria (cm, ~a cada 7 dias) -> média anual em mm, referência 1993 = 0.
+
+    Colunas do arquivo da NASA: 1 = ano decimal, 2 = GMSL suavizado (cm), 4 = taxa da tendência
+    quadrática naquele instante (cm/ano); 99900 = vazio (parte da extrapolação, que NÃO usamos).
+    Devolve (série anual, taxa atual em mm/ano, nome do arquivo).
+    """
+    rec = json.loads(get_text(URL["gmsl"]))
+    f = next(x for x in rec["files"] if x["key"].endswith(".txt"))
+    path = download(f["links"]["self"], CACHE / "sealevel" / f["key"])
+    by_year, rate = {}, None
+    for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
         parts = line.split()
-        if len(parts) < 2 or line.lstrip().startswith(("#", "HDR")):
+        if len(parts) < 4 or line.startswith("HDR"):
             continue
         try:
-            t, v = float(parts[0]), float(parts[1])
+            t, v, r = float(parts[0]), float(parts[1]), float(parts[3])
         except ValueError:
             continue
-        if 1990 < t < 2100:
-            by_year.setdefault(int(t), []).append(v * 10)  # cm -> mm
-    annual = {y: sum(v) / len(v) for y, v in by_year.items() if len(v) >= 6}
-    if 1993 not in annual:
-        raise RuntimeError("formato inesperado no arquivo GMSL")
+        if v > 9000:                                   # 99900 = sem observação
+            continue
+        by_year.setdefault(int(t), []).append(v * 10)  # cm -> mm
+        rate = r * 10                                  # cm/ano -> mm/ano (fica a do fim do registro)
+    annual = {y: sum(v) / len(v) for y, v in by_year.items() if len(v) >= 40}   # só anos completos
+    if 1993 not in annual or rate is None:
+        raise RuntimeError("formato inesperado no arquivo GMSL da NASA")
     ref = annual[1993]
-    return {y: round(v - ref) for y, v in sorted(annual.items())}
+    return {y: round(v - ref) for y, v in sorted(annual.items())}, round(rate, 2), f["key"]
 
 
 # ---------------------------------------------------------------- modelo GISS-E2.1-G
@@ -241,6 +254,34 @@ def model_projections(temp_obs, ice_obs):
     return temp, ice, {"temp_anchor_shift_C": notes, "ice_bias_ratio": round(ice_ratio, 3)}
 
 
+def sea_anchor_2100(ssp, sea_obs):
+    """Mediana AR6 de 2100 (NASA Sea Level Projection Tool, base 1995–2014) passada para a base 1993.
+
+    A diferença entre as bases vem da própria série observada da NASA: média de 1995–2014 (em mm vs. 1993).
+    """
+    base = sum(sea_obs[y] for y in range(1995, 2015)) / 20
+    return AR6_GMSL_2100_M[ssp] * 1000 + base
+
+
+def sea_projection(temp, sea_obs, anchor_2100, rate_now):
+    """Série anual de nível do mar (mm vs. 1993) para um cenário.
+
+    dH/dt = r0 + a * (T(t) - T0): a taxa atual (r0, da NASA) mais um termo proporcional ao aquecimento
+    adicional. `a` é resolvido para que H(2100) coincida com a mediana AR6 (`anchor_2100`).
+    """
+    y0 = max(y for y in sea_obs if y in temp)             # último ano com nível do mar observado
+    t0 = temp[y0]
+    years = range(y0 + 1, 2101)
+    d_temp = sum(temp[y] - t0 for y in years)
+    need = anchor_2100 - sea_obs[y0] - rate_now * len(years)
+    a = need / d_temp if abs(d_temp) > 1e-6 else 0.0
+    out, h = {y0: sea_obs[y0]}, float(sea_obs[y0])
+    for y in years:
+        h += max(0.0, rate_now + a * (temp[y] - t0))       # o mar não desce neste horizonte
+        out[y] = round(h)
+    return out
+
+
 # ---------------------------------------------------------------- escrita
 
 
@@ -267,6 +308,9 @@ def write_projections(p, sources):
         lines.append(f"  {ssp}: {{")
         lines.append(f"    label: {json.dumps(label, ensure_ascii=False)},")
         for k in ("temp", "co2", "ice", "sea"):
+            if not p[ssp].get(k):
+                print(f"AVISO: {ssp}/{k} sem dados — série omitida (o app precisa dela!)")
+                continue
             lines.append(f"    // {sources[k]}")
             lines.append(f"    {k}: {fmt_series(p[ssp][k])},")
         lines.append("  },")
@@ -282,6 +326,12 @@ def main():
 
     h = dict(old_h)
     p = {s: dict(old_p.get(s, {})) for s in SCENARIOS}
+    # fonte registrada na execução anterior: se um download falhar, os valores antigos continuam
+    # e a fonte deles também (em vez de virar "PENDENTE")
+    try:
+        old_prov = json.loads((DATA / "provenance.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        old_prov = {}
     hs = {"temp": "?", "co2": "?", "ice": "?", "sea": "?"}
     ps = {"temp": "?", "co2": "?", "ice": "?", "sea": "?"}
     meta = {}
@@ -303,7 +353,9 @@ def main():
     def do_ice():
         h["ice"] = ice_gsfc(); hs["ice"] = "NASA GSFC, extensão de setembro (mi km²), 1979–2017"
     def do_sea():
-        h["sea"] = sea_gmsl(); hs["sea"] = "NASA-SSH GMSL Indicator (PO.DAAC), mm vs. 1993"
+        h["sea"], meta["sea_rate_now_mm_yr"], fname = sea_gmsl()
+        hs["sea"] = (f"NASA (JPL/GSFC, NASA Sea Level Change) — GMSL por altimetria NASA-SSH, média anual, "
+                     f"mm vs. 1993; arquivo {fname} (doi:10.5281/zenodo.7702315); sem dado antes de 1993")
     def do_model():
         try:
             import netCDF4, numpy  # noqa: F401,E401
@@ -316,17 +368,42 @@ def main():
         ps["ice"] = "NASA GISS-E2.1-G (CMIP6), extensão de setembro (siconca >= 15%); bias corrigido vs. GSFC 1979–2014"
         meta.update(m)
 
+    def do_sea_proj():
+        if not h.get("sea") or min(h["sea"]) != 1993:
+            raise RuntimeError("sem nível do mar observado da NASA (1993 em diante)")
+        rate = meta.get("sea_rate_now_mm_yr")
+        if rate is None:
+            raise RuntimeError("sem a taxa atual do nível do mar (arquivo da NASA)")
+        anchors = {}
+        for s_ in SCENARIOS:
+            if not p[s_].get("temp"):
+                raise RuntimeError(f"sem temperatura projetada para {s_}")
+            anchors[s_] = round(sea_anchor_2100(s_, h["sea"]))
+            p[s_]["sea"] = sea_projection(p[s_]["temp"], h["sea"], anchors[s_], rate)
+        meta["sea_2100_anchor_mm_vs_1993"] = anchors
+        ps["sea"] = ("Semi-empírico (Rahmstorf 2007) dirigido pela temperatura GISS-E2.1-G; parte da taxa atual "
+                     "da NASA e chega em 2100 à mediana do NASA Sea Level Projection Tool (IPCC AR6, tab. 9.9), "
+                     "convertida para a base 1993 com a série observada da NASA")
+
     step("temperatura observada (GISTEMP)", do_temp)
     step("CO2 observado + cenários (GISS)", do_co2)
     step("gelo do Ártico observado (GSFC)", do_ice)
-    step("nível do mar observado (NASA-SSH)", do_sea)
+    step("nível do mar observado (NASA GMSL, altimetria)", do_sea)
     step("projeções de temperatura e gelo (modelo GISS-E2.1-G)", do_model)
+    step("projeção do nível do mar (semi-empírico + NASA Sea Level Projection Tool)", do_sea_proj)
 
+    # segurança: não existe medição de nível do mar por satélite antes de 1993 — valores antigos
+    # (de versões anteriores do arquivo) nunca sobrevivem a uma falha de download
+    if h.get("sea"):
+        h["sea"] = {y: v for y, v in h["sea"].items() if y >= 1993}
+    pend = "PENDENTE — valores anteriores mantidos (ver README, seção Dados)"
     for k in hs:
         if hs[k] == "?":
-            hs[k] = "PENDENTE — valores anteriores mantidos (ver README, seção Dados)"
+            prev = old_prov.get("historical", {}).get(k, "")
+            hs[k] = prev if prev and not prev.startswith("PENDENTE") and k in h else pend
         if ps[k] == "?":
-            ps[k] = "PENDENTE — valores anteriores mantidos (ver README, seção Dados)"
+            prev = old_prov.get("projections", {}).get(k, "")
+            ps[k] = prev if prev and not prev.startswith("PENDENTE") else pend
     hs["summary"] = "Somente dados abertos da NASA — ver README, seção Dados"
     write_historical(h, hs)
     write_projections(p, ps)
