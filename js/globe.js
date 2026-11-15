@@ -42,8 +42,28 @@ function init() {
   const controls = new OrbitControls(camera, renderer.domElement);
   controls.enableDamping = true; controls.dampingFactor = 0.06;
   controls.enablePan = false;
-  controls.minDistance = 1.4; controls.maxDistance = 12;
+  controls.minDistance = 1.3; controls.maxDistance = 8;
   controls.rotateSpeed = 0.5;
+
+  // ---------- 🔍 ZOOM PRÓPRIO (corrige o zoom "bugado") ----------
+  // O OrbitControls do three.js 0.160 divide o passo do zoom por (devicePixelRatio | 0): com o
+  // zoom do navegador abaixo de 100% isso vira 0 → divisão por zero → a Terra pula de uma vez
+  // para perto ou longe. Aqui a roda do mouse / pinça do touchpad é tratada por nós: o zoom é
+  // suave e proporcional ao gesto. A pinça no celular continua com o OrbitControls (não tem o bug).
+  const HOME = camera.position.clone();                         // posição inicial (para "centralizar")
+  let zoomGoal = null, homeDir = null;
+  let shiftGoal = 0, shiftCur = 0;                              // painel aberto: Terra desliza p/ a esquerda
+  const zoomBy = f => {
+    const d = zoomGoal ?? camera.position.length();
+    zoomGoal = clamp(d * f, controls.minDistance, controls.maxDistance);
+  };
+  container.addEventListener('wheel', e => {
+    e.preventDefault(); e.stopPropagation();                    // não deixa chegar no OrbitControls
+    let dy = e.deltaY;
+    if (e.deltaMode === 1) dy *= 16; else if (e.deltaMode === 2) dy *= innerHeight;   // linhas / páginas
+    zoomBy(Math.exp(clamp(dy, -240, 240) * 0.0013));
+  }, { capture: true, passive: false });
+  controls.addEventListener('start', () => { homeDir = null; });   // usuário arrastou: cancela "centralizar"
 
   // ---------- estrelas ----------
   {
@@ -520,6 +540,8 @@ function init() {
 
   const clock = new THREE.Clock();
   function resize() {
+    // o zoom do navegador muda o devicePixelRatio: reajusta para a Terra não ficar borrada
+    renderer.setPixelRatio(Math.min(devicePixelRatio, 1.5));
     camera.aspect = innerWidth / innerHeight;
     camera.updateProjectionMatrix();
     renderer.setSize(innerWidth, innerHeight);
@@ -571,6 +593,25 @@ function init() {
     curAtmo += (T.atmo - curAtmo) * k;
     U.uAtmoColor.value.copy(COLD).lerp(HOT, U.uHeat.value * (layers.heat ? 1 : 0) * 0.9);
     atmoU.uIntensity.value = 0.75 + curAtmo * 1.0;
+    // zoom suave: anda uma fração do caminho até a distância desejada a cada quadro
+    if (zoomGoal !== null) {
+      const d = camera.position.length(), nd = d + (zoomGoal - d) * Math.min(1, dt * 9);
+      camera.position.setLength(nd);
+      if (Math.abs(nd - zoomGoal) < 1e-4) zoomGoal = null;
+    }
+    // painel aberto: desloca a "janela" da câmera (a Terra vai para a esquerda e o céu cobre a tela toda)
+    if (Math.abs(shiftGoal - shiftCur) > 0.3 || shiftCur !== 0) {
+      shiftCur += (shiftGoal - shiftCur) * Math.min(1, dt * 6);
+      if (Math.abs(shiftCur) < 0.3 && shiftGoal === 0) { shiftCur = 0; camera.clearViewOffset(); }
+      else camera.setViewOffset(innerWidth, innerHeight, shiftCur, 0, innerWidth, innerHeight);
+    }
+    // centralizar: gira a câmera de volta para a direção inicial
+    if (homeDir) {
+      const d = camera.position.length();
+      const dir = camera.position.clone().normalize().lerp(homeDir, Math.min(1, dt * 5)).normalize();
+      camera.position.copy(dir.multiplyScalar(d));
+      if (dir.distanceTo(homeDir) < 1e-3) homeDir = null;
+    }
     controls.update();
     renderer.render(scene, camera);
   });
@@ -581,6 +622,16 @@ function init() {
     // (colega) Renderiza agora e devolve o <canvas>: a visão (vision.js) lê os pixels do globo.
     // A leitura precisa acontecer logo depois, na mesma tarefa.
     frame() { if (!active) return null; renderer.render(scene, camera); return renderer.domElement; },
-    setActive(on) { active = on; container.style.visibility = on ? '' : 'hidden'; }
+    setActive(on) { active = on; container.style.visibility = on ? '' : 'hidden'; },
+    // 🔍 zoom para botões e teclado (+ − 0)
+    setShift(px) { shiftGoal = px; },                           // usado ao abrir/fechar painéis
+    zoomIn() { zoomBy(0.78); },
+    zoomOut() { zoomBy(1.28); },
+    resetView() { zoomGoal = HOME.length(); homeDir = HOME.clone().normalize(); },
+    // 0% = o mais longe possível, 100% = o mais perto (a narração fala isso)
+    zoomLevel() {
+      const d = zoomGoal ?? camera.position.length();
+      return Math.round((controls.maxDistance - d) / (controls.maxDistance - controls.minDistance) * 100);
+    }
   };
 }

@@ -36,7 +36,8 @@ EJ.audio = (function () {
       noiseGain, noiseFilter, mediaRec = null, recChunks = [], lastCurve = -1;
   let tick = 0, melDeg = 4;
   const bus = {};
-  const state = { muted: false, solo: null, off: new Set(), mode: 'globe', profile: 'balanced' };
+  const state = { muted: false, solo: null, off: new Set(), mode: 'globe', profile: 'balanced',
+                  volume: .7, ducked: false };   // volume geral · ducked = voz falando (música abaixa)
   const clamp = (x, a = 0, b = 1) => Math.min(b, Math.max(a, x));
   const pick = (rnd, arr) => arr[Math.floor(rnd() * arr.length)];
 
@@ -64,7 +65,7 @@ EJ.audio = (function () {
   function init() {
     if (ctx) return ctx.resume();
     ctx = new (window.AudioContext || window.webkitAudioContext)();
-    master = ctx.createGain(); master.gain.value = .7;
+    master = ctx.createGain(); master.gain.value = state.volume;
     comp = ctx.createDynamicsCompressor();
     comp.threshold.value = -20; comp.ratio.value = 4; comp.attack.value = .01; comp.release.value = .25;
     master.connect(comp); comp.connect(ctx.destination);
@@ -141,7 +142,8 @@ EJ.audio = (function () {
 
   function applyMix() {
     if (!ctx) return;
-    master.gain.setTargetAtTime(state.muted ? 0 : .7, ctx.currentTime, .05);
+    const vol = state.muted ? 0 : state.volume * (state.ducked ? .28 : 1);
+    master.gain.setTargetAtTime(vol, ctx.currentTime, state.ducked ? .08 : .35);   // abaixa rápido, volta suave
     AUDIO_LAYERS.forEach(k => bus[k].gain.setTargetAtTime(audible(k) ? 1 : 0, ctx.currentTime, .08));
   }
 
@@ -328,6 +330,8 @@ EJ.audio = (function () {
     toggleSolo(k) { state.solo = state.solo === k ? null : k; applyMix(); return state.solo; },
     toggleLayer(k) { state.off.has(k) ? state.off.delete(k) : state.off.add(k); state.solo = null; applyMix(); },
     toggleMute() { state.muted = !state.muted; applyMix(); return state.muted; },
+    setVolume(v) { state.volume = Math.min(1, Math.max(0, v)); applyMix(); },
+    duck(on) { state.ducked = !!on; applyMix(); },              // narração: abaixa a música enquanto a voz fala
     setMode(m) { state.mode = m; tick = 0; applyMix(); },
     setProfile(p) { if (PROFILES[p]) state.profile = p; },
     state

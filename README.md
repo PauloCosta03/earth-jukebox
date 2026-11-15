@@ -62,6 +62,26 @@ Em **Instrumentos → 🎼 Abrir partitura** (ou arrastando o arquivo para a tel
 
 Na imagem, as notas encontradas aparecem com um círculo verde para conferir a leitura. Exemplos em `exemplos/` (gerados por `scripts/make_score_examples.py`, domínio público).
 
+## Interface e acessibilidade
+
+A interface fica em três faixas: **topo** (menu e visualização), **painel lateral** (um aberto por vez) e **barra de reprodução**. Tudo é feito para funcionar só com teclado e para quem não enxerga.
+
+- **Narração por voz** (`js/a11y.js`): ao navegar com **Tab**, cada controle diz em voz alta o que faz e o estado atual (ligado/desligado, valor, aberto/fechado). A música abaixa enquanto a voz fala. Texto de cada controle no atributo `data-say` do `index.html`. Tecla **V** liga/desliga (para quem já usa leitor de tela).
+- **Sons da interface**: toques curtos na mesma tonalidade da música (lá maior pentatônica) ao navegar, ligar/desligar e abrir painéis — dá para "ouvir" onde se está.
+- **Painel Acessibilidade**: narração, velocidade da voz, sons da interface, tamanho do texto, alto contraste, reduzir movimento, guia falado e lista de atalhos.
+- **Esconder a interface** (botão de olho ou **H**) e **tela cheia** (**F**).
+- **Zoom** suave na roda/touchpad e pelos botões ou teclas **+ − 0**. Corrige um bug do OrbitControls do three.js 0.160 (`devicePixelRatio | 0` vira 0 com o zoom do navegador abaixo de 100% → a Terra pulava).
+- Ícones: [Lucide](https://lucide.dev) (ISC), embutidos no HTML por `scripts/build_icons.py`.
+
+| Tecla | Ação | Tecla | Ação |
+|---|---|---|---|
+| Tab | próximo controle (com narração) | V | narração liga/desliga |
+| Espaço | tocar / pausar | + − 0 | aproximar / afastar / centralizar |
+| ← → | ano (Shift: 10 anos) | H | esconder / mostrar interface |
+| D | descrever a tela | F | tela cheia |
+| S | varrer a imagem | ? | painel Acessibilidade |
+| M | silenciar a música | Esc | fecha o painel |
+
 ## Estrutura
 
 ```
@@ -76,6 +96,7 @@ js/vision.js                visão computacional: imagem → características mu
 js/score.js                 partituras: MusicXML, MIDI e leitura óptica de imagem → notas
 tests/                      testes automáticos (node --test tests/)
 js/main.js                  interface e controles
+js/a11y.js                  narração por voz, sons da interface, tela cheia, esconder interface, zoom, opções
 js/vendor/                  three.js + OrbitControls (empacotados p/ funcionar offline)
 data/historical.js          séries observadas (GERADO pelo script)
 data/projections.js         projeções por cenário SSP (GERADO pelo script)
