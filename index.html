@@ -118,6 +118,14 @@
     <button id="scan" class="btn">🔍 Varrer a imagem <kbd>S</kbd></button>
     <button id="rec" class="btn">⏺ Gravar áudio</button>
   </div>
+
+  <!-- 🎼 tocar qualquer partitura -->
+  <h3>Tocar uma partitura</h3>
+  <p class="note">Arquivo de partitura digital (<b>MusicXML</b> ou <b>MIDI</b> — exportável do MuseScore, baixável do IMSLP/MuseScore) toca exatamente. <b>Foto/imagem</b> de partitura é experimental: pauta reta e limpa, clave de sol, uma linha de melodia.</p>
+  <div class="row">
+    <button id="score-btn" class="btn">🎼 Abrir partitura</button>
+    <input id="score-file" type="file" accept=".musicxml,.xml,.mxl,.mid,.midi,image/*" hidden>
+  </div>
 </section>
 
 <!-- ============ CAIXINHA: SOBRE ============ -->
@@ -174,6 +182,7 @@
 <script src="data/layers.js"></script>
 <script src="js/data.js"></script>
 <script src="js/vision.js"></script>
+<script src="js/score.js"></script>
 <script src="js/audio.js"></script>
 <script src="js/chart.js"></script>
 <script src="js/main.js"></script>

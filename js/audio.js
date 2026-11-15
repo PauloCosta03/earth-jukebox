@@ -261,6 +261,34 @@ EJ.audio = (function () {
     return seconds;
   }
 
+  // 🎼 Toca uma lista de notas { midi, start, dur } (de score.js). Caixinha de música na camada "img".
+  let scoreNodes = [];
+  function playNotes(notes, { gain = 1 } = {}) {
+    if (!ctx || !notes || !notes.length) return 0;
+    stopNotes();
+    const t0 = ctx.currentTime + .1;
+    // muitas notas ao mesmo tempo (acordes, piano) somam volume: reduz um pouco
+    const poly = Math.max(1, ...notes.map(n => notes.filter(m => Math.abs(m.start - n.start) < .03).length));
+    const vol = .16 / Math.sqrt(poly) * gain;
+    for (const n of notes) {
+      const f = 440 * Math.pow(2, (n.midi - 69) / 12), t = t0 + n.start, d = Math.max(.08, Math.min(n.dur, 4));
+      const osc = ctx.createOscillator(), g = ctx.createGain();
+      osc.type = 'triangle'; osc.frequency.value = f;
+      g.gain.setValueAtTime(0, t);
+      g.gain.linearRampToValueAtTime(vol, t + .008);
+      g.gain.setTargetAtTime(vol * .55, t + .03, .15);                // queda suave, como corda/caixinha
+      g.gain.setTargetAtTime(.0001, t + d * .92, .04);                // solta perto do fim da nota
+      osc.connect(g); g.connect(bus.img);
+      osc.start(t); osc.stop(t + d + .3);
+      scoreNodes.push(osc);
+    }
+    return Math.max(...notes.map(n => n.start + n.dur)) + .4;
+  }
+  function stopNotes() {
+    scoreNodes.forEach(o => { try { o.stop(); } catch (e) { /* já parou */ } });
+    scoreNodes = [];
+  }
+
   // Gravação do que está tocando (arquivo de áudio gerado)
   const rec = {
     get active() { return !!mediaRec; },
@@ -284,6 +312,7 @@ EJ.audio = (function () {
 
   return {
     MAJOR: [0, 2, 4, 5, 7, 9, 11],                     // escala maior (modo partitura)
+    playNotes, stopNotes,
     init, play, scan, audible, rec, modeFor, tensionOf, degFreq, MODES, PROFILES, TICK,
     toggleSolo(k) { state.solo = state.solo === k ? null : k; applyMix(); return state.solo; },
     toggleLayer(k) { state.off.has(k) ? state.off.delete(k) : state.off.add(k); state.solo = null; applyMix(); },

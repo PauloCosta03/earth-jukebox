@@ -50,6 +50,18 @@ O `js/vision.js` "olha" um quadro e transforma em música: **cor** → acorde, *
 
 Acessibilidade: o botão 🗣️ (tecla **D**) descreve em texto tudo o que está na tela — ano, valores, harmonia, camadas ligadas e o que a imagem mostra. Atalhos: Espaço, ← →, S, D, M.
 
+### Tocar partituras
+
+Em **Instrumentos → 🎼 Abrir partitura** (ou arrastando o arquivo para a tela):
+
+| Formato | Precisão | De onde tirar |
+|---|---|---|
+| **MusicXML** (`.musicxml`, `.xml`, `.mxl`) | exata (notas, ritmo, andamento) | exporte do MuseScore/Finale/Sibelius; baixe no IMSLP ou MuseScore |
+| **MIDI** (`.mid`, `.midi`) | exata | qualquer editor de música |
+| **Imagem** de partitura impressa | experimental | pauta reta e limpa, clave de sol, uma linha de melodia; não lê armadura, acidentes nem ritmo |
+
+Na imagem, as notas encontradas aparecem com um círculo verde para conferir a leitura. Exemplos em `exemplos/` (gerados por `scripts/make_score_examples.py`, domínio público).
+
 ## Estrutura
 
 ```
@@ -61,6 +73,7 @@ js/audio.js                 motor de áudio (Web Audio), uma camada por dado
 js/chart.js                 gráfico 2D das séries
 js/data.js                  junta histórico e projeção (interpolação PCHIP, emenda suave)
 js/vision.js                visão computacional: imagem → características musicais
+js/score.js                 partituras: MusicXML, MIDI e leitura óptica de imagem → notas
 tests/                      testes automáticos (node --test tests/)
 js/main.js                  interface e controles
 js/vendor/                  three.js + OrbitControls (empacotados p/ funcionar offline)

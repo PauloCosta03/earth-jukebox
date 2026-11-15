@@ -86,7 +86,7 @@ select option{background:#0b1426}
 .btn.recording{background:#b3261e;border-color:#ff6b61}
 .desc{color:var(--muted);font-size:.8rem;line-height:1.4;margin:10px 0 0;min-height:1.4em}
 #frame-view{position:fixed;inset:0;z-index:1;display:none;align-items:center;justify-content:center;background:#000}
-#frame-view img,#frame-view video{max-width:100%;max-height:100%;object-fit:contain}
+#frame-view img,#frame-view video,#frame-view canvas{max-width:100%;max-height:100%;object-fit:contain}
 body.frame-mode #frame-view{display:flex}
 body.frame-mode #loop-label,body.frame-mode #chart{display:none}
 body.frame-mode .chip,body.frame-mode #scenario{opacity:.4;pointer-events:none}

@@ -12,6 +12,7 @@
   let mode = 'globe';                 // 'globe' | 'frame' (imagem/vídeo do EIC)
   let media = null;                   // { kind: 'image'|'video', el, url, name }
   let cur = EJ.YEAR_MIN;              // ano atual (fonte única da verdade)
+  let scoreT = null, scorePlaying = false;   // tocador de partitura
   let timer = null, lastF = null, recStart = null, announceT = null, soonT = null;
 
   // O globo 3D usa módulos ES e texturas — não funciona abrindo o arquivo direto.
@@ -119,6 +120,7 @@
 
   // ---------------------------------------------------------------- reprodução
   function stop(label = '▶ Tocar') {
+    EJ.audio.stopNotes(); clearTimeout(scoreT); scorePlaying = false;
     clearInterval(timer); timer = null; playBtn.textContent = label;
     if (media && media.kind === 'video') media.el.pause();
   }
@@ -143,6 +145,13 @@
     EJ.audio.init();
     if (timer) { stop(); announce('Pausado.'); return; }
     if (mode === 'frame' && media && media.score) { $('scan').click(); return; }   // partitura: Tocar = Varrer
+    if (mode === 'frame' && media && media.kind === 'score') {                     // 🎼 arquivo de partitura
+      if (scorePlaying) { stop(); announce('Parado.'); return; }
+      const secs = EJ.audio.playNotes(media.notes);
+      scorePlaying = true; playBtn.textContent = '⏹ Parar';
+      scoreT = setTimeout(() => { scorePlaying = false; playBtn.textContent = '↺ De novo'; }, secs * 1000);
+      return;
+    }
     playBtn.textContent = '⏸ Pausar';
     mode === 'globe' ? startGlobe() : startFrame();
   };
@@ -222,7 +231,7 @@
     mode = m; stop();
     const frame = m === 'frame';
     document.body.classList.toggle('frame-mode', frame);
-    document.body.classList.toggle('is-image', frame && media && media.kind === 'image');
+    document.body.classList.toggle('is-image', frame && media && media.kind !== 'video');
     $('globe-btn').hidden = !frame;
     $('scenario').disabled = frame;
     document.querySelectorAll('[data-viz]').forEach(c => (c.disabled = frame));
@@ -272,7 +281,69 @@
   $('file').onchange = e => { loadMedia(e.target.files[0]); e.target.value = ''; };
   $('globe-btn').onclick = () => { setMode('globe'); announce('De volta ao globo.'); };
   addEventListener('dragover', e => e.preventDefault());
-  addEventListener('drop', e => { e.preventDefault(); loadMedia(e.dataTransfer.files[0]); });
+  addEventListener('drop', e => {
+    e.preventDefault();
+    const f = e.dataTransfer.files[0];
+    if (f && EJ.score.isScoreFile(f.name)) loadScore(f); else loadMedia(f);
+  });
+
+  // ---------------------------------------------------------------- 🎼 partituras (score.js)
+  // Desenha as notas como um "rolo de piano" (tempo → direita, altura → cima) para quem vê.
+  function pianoRoll(notes, title) {
+    const W = 1600, H = 900, cv = document.createElement('canvas'); cv.width = W; cv.height = H;
+    const g = cv.getContext('2d'), end = Math.max(...notes.map(n => n.start + n.dur));
+    const lo = Math.min(...notes.map(n => n.midi)) - 2, hi = Math.max(...notes.map(n => n.midi)) + 2;
+    g.fillStyle = '#050a18'; g.fillRect(0, 0, W, H);
+    g.fillStyle = '#8fa1c4'; g.font = '36px system-ui'; g.fillText('🎼 ' + (title || 'Partitura'), 40, 60);
+    const x = t => 40 + t / end * (W - 80), y = m => 120 + (hi - m) / (hi - lo) * (H - 180);
+    for (const n of notes) {
+      g.fillStyle = `hsl(${(n.midi % 12) * 30}, 80%, 70%)`;
+      g.fillRect(x(n.start), y(n.midi) - 6, Math.max(4, x(n.start + n.dur) - x(n.start) - 2), 12);
+    }
+    cv.setAttribute('role', 'img');
+    cv.setAttribute('aria-label', `Partitura ${title || ''} com ${notes.length} notas`);
+    return cv;
+  }
+
+  async function loadScore(file) {
+    if (!file) return;
+    stop();
+    msg.textContent = `Lendo ${file.name}…`;
+    let res, view;
+    try {
+      if (EJ.score.isScoreFile(file.name)) {
+        res = await EJ.score.load(file);
+        view = pianoRoll(res.notes, res.title || file.name);
+      } else if (file.type.startsWith('image/')) {
+        const img = new Image();
+        img.src = URL.createObjectURL(file);
+        await img.decode();
+        res = EJ.score.readImage(img);
+        // mostra a imagem com as notas encontradas marcadas (para conferir a leitura)
+        view = document.createElement('canvas'); view.width = img.naturalWidth; view.height = img.naturalHeight;
+        const g = view.getContext('2d'); g.drawImage(img, 0, 0);
+        g.strokeStyle = '#00c27a'; g.lineWidth = Math.max(2, img.naturalWidth / 500);
+        res.marks.forEach(m => { g.beginPath(); g.arc(m.x, m.y, m.r, 0, Math.PI * 2); g.stroke(); });
+        view.setAttribute('role', 'img');
+        view.setAttribute('aria-label', `Partitura lida: ${res.notes.length} notas em ${res.staves} pautas`);
+      } else throw new Error('use MusicXML, MIDI ou imagem');
+    } catch (err) {
+      msg.textContent = `Não consegui ler ${file.name}: ${err.message}`;
+      announce(msg.textContent);
+      return;
+    }
+    if (!res.notes.length) { msg.textContent = 'A partitura não tem notas.'; return; }
+    $('frame-view').replaceChildren(view);
+    media = { kind: 'score', el: view, url: null, name: file.name, notes: res.notes };
+    setMode('frame');
+    const secs = Math.round(Math.max(...res.notes.map(n => n.start + n.dur)));
+    const first = res.notes.slice(0, 8).map(n => EJ.score.noteName(n.midi)).join(', ');
+    msg.textContent = `🎼 ${res.title || file.name}: ${res.notes.length} notas, ${secs} s` +
+      (res.experimental ? ' (leitura de imagem experimental — confira as marcas verdes)' : '') + '. Aperte Tocar.';
+    announce(`Partitura carregada: ${res.notes.length} notas, ${secs} segundos. Começa com ${first}. Aperte tocar.`);
+  }
+  $('score-btn').onclick = () => $('score-file').click();
+  $('score-file').onchange = e => { loadScore(e.target.files[0]); e.target.value = ''; };
 
   // ---------------------------------------------------------------- cards (áudio) e chips (globo)
   document.querySelectorAll('.card').forEach(card => {
