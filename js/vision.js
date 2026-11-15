@@ -15,6 +15,10 @@ EJ.vision = (function () {
   const BRIGHT = 0.55;               // limiar de "pixel brilhante"
   const HUE_NAMES = ['vermelho', 'laranja', 'amarelo', 'verde-limão', 'verde', 'verde-água',
     'ciano', 'azul-céu', 'azul', 'violeta', 'magenta', 'rosa'];
+  const HUE_NAMES_EN = ['red', 'orange', 'yellow', 'lime green', 'green', 'teal',
+    'cyan', 'sky blue', 'blue', 'violet', 'magenta', 'pink'];
+  const en = () => window.EJ && EJ.i18n && EJ.i18n.lang === 'en';
+  const hue = bin => (en() ? HUE_NAMES_EN : HUE_NAMES)[bin];
   let canvas = null, cx = null, prevLuma = null;
 
   const clamp = (x, a = 0, b = 1) => Math.min(b, Math.max(a, x));
@@ -144,18 +148,25 @@ EJ.vision = (function () {
   // Descrição em texto (leitores de tela, baixa visão): o que a imagem "mostra" e por que soa assim.
   function describe(f) {
     if (!f) return '';
-    const names = f.topHues.map(t => HUE_NAMES[t.bin]);
-    const colors = names.length ? 'dominada por ' + (names.length > 1
-      ? names.slice(0, -1).join(', ') + ' e ' + names[names.length - 1] : names[0]) : 'quase sem cor';
-    const bright = level(f.bright, [0.1, 0.25, 0.45], ['muito escura', 'escura', 'equilibrada', 'clara']);
+    // plano B: sem i18n.js carregado (ex.: testes automáticos), fala em português
+    const PT = { 'vis.dominated': 'dominada por {list}', 'vis.and': ' e ', 'vis.noColor': 'quase sem cor',
+      'vis.b0': 'muito escura', 'vis.b1': 'escura', 'vis.b2': 'equilibrada', 'vis.b3': 'clara',
+      'vis.m0': 'sem movimento perceptível', 'vis.m1': 'com movimento suave', 'vis.m2': 'com movimento forte',
+      'vis.sentence': 'Imagem {bright}, {colors}; {dens}% dos pixels são pontos brilhantes; {mov}.' };
+    const t = (window.EJ && EJ.t) ? EJ.t
+      : (k, v) => PT[k].replace(/\{(\w+)\}/g, (m, x) => (v && x in v ? v[x] : m));
+    const names = f.topHues.map(h => hue(h.bin));
+    const colors = names.length ? t('vis.dominated', { list: names.length > 1
+      ? names.slice(0, -1).join(', ') + t('vis.and') + names[names.length - 1] : names[0] }) : t('vis.noColor');
+    const bright = level(f.bright, [0.1, 0.25, 0.45], [t('vis.b0'), t('vis.b1'), t('vis.b2'), t('vis.b3')]);
     const dens = Math.round(f.density * 100);
-    const mov = level(f.motion, [0.004, 0.02], ['sem movimento perceptível', 'com movimento suave', 'com movimento forte']);
-    return `Imagem ${bright}, ${colors}; ${dens}% dos pixels são pontos brilhantes; ${mov}.`;
+    const mov = level(f.motion, [0.004, 0.02], [t('vis.m0'), t('vis.m1'), t('vis.m2')]);
+    return t('vis.sentence', { bright, colors, dens, mov });
   }
 
   return {
     analyze, analyzePixels, describe, reset() { prevLuma = null; },
     HUE_NAMES, GW, GH, NCOL,
-    hueName: bin => HUE_NAMES[bin]
+    hueName: bin => hue(bin)
   };
 })();

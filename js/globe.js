@@ -87,7 +87,7 @@ function init() {
   // ---------- texturas (NASA, públicas, empacotadas em assets/) ----------
   const manager = new THREE.LoadingManager();
   manager.onLoad = () => { loadingEl.classList.add('hide'); dispatchEvent(new Event('ej-globe-ready')); };
-  manager.onError = url => fail('Não consegui carregar <b>' + url + '</b>.<br>Abra pelo <b>run.bat</b> (servidor local), não pelo arquivo direto.');
+  manager.onError = url => fail(EJ.t('load.error', { url }));
   const loader = new THREE.TextureLoader(manager);
   const tex = (p, srgb) => {
     const t = loader.load(p);

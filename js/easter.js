@@ -65,8 +65,7 @@ function themeNotes() {
     await EJ.audio.init();
     const { notes: list, local } = await notes();
     const secs = EJ.audio.playNotes(list, { timbre: 'ocarina' });
-    say(local ? `🎶 Ocarina: tocando seu MIDI local (${Math.round(secs)} s). Esc ou Tocar para parar.`
-              : '🎶 Você achou o segredo da ocarina! "Canção do Planeta Azul" — Earth Jukebox.');
+    say('🎶 ' + (local ? EJ.t('egg.local', { s: Math.round(secs) }) : EJ.t('egg.found')));
   }
 
   addEventListener('keydown', e => {

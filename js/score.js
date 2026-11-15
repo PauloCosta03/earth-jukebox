@@ -15,9 +15,9 @@ EJ.score = (function () {
   // ------------------------------------------------------------------ MusicXML
   function parseMusicXML(text) {
     const doc = new DOMParser().parseFromString(text, 'application/xml');
-    if (doc.querySelector('parsererror')) throw new Error('XML inválido');
+    if (doc.querySelector('parsererror')) throw new Error(EJ.t('score.err.xml'));
     const part = doc.querySelector('part');
-    if (!part) throw new Error('MusicXML sem <part>');
+    if (!part) throw new Error(EJ.t('score.err.part'));
     const title = (doc.querySelector('work-title') || doc.querySelector('movement-title') || {}).textContent || '';
     let divisions = 1, tempo = 100, t = 0, lastStart = 0;          // t em semínimas
     const notes = [];
@@ -82,7 +82,7 @@ EJ.score = (function () {
       if (m) main = m[1];
     }
     main = main || Object.keys(files).find(n => /\.(xml|musicxml)$/i.test(n) && !n.startsWith('META-INF'));
-    if (!main) throw new Error('.mxl sem partitura dentro');
+    if (!main) throw new Error(EJ.t('score.err.mxl'));
     return new TextDecoder().decode(await inflate(files[main]));
   }
 
@@ -94,12 +94,12 @@ EJ.score = (function () {
     const u32 = () => { const v = d.getUint32(p); p += 4; return v; };
     const u16 = () => { const v = d.getUint16(p); p += 2; return v; };
     const vlq = () => { let v = 0, b; do { b = d.getUint8(p++); v = (v << 7) | (b & 0x7f); } while (b & 0x80); return v; };
-    if (str(4) !== 'MThd') throw new Error('não é um arquivo MIDI');
+    if (str(4) !== 'MThd') throw new Error(EJ.t('score.err.midi'));
     p += 4; u16(); const ntr = u16(), div = u16();
-    if (div & 0x8000) throw new Error('MIDI com tempo SMPTE não suportado');
+    if (div & 0x8000) throw new Error(EJ.t('score.err.smpte'));
     const events = [];                                              // { tick, type, ... }
     for (let k = 0; k < ntr; k++) {
-      if (str(4) !== 'MTrk') throw new Error('trilha MIDI inválida');
+      if (str(4) !== 'MTrk') throw new Error(EJ.t('score.err.track'));
       const end = u32() + p;
       let tick = 0, status = 0;
       while (p < end) {
@@ -185,7 +185,7 @@ EJ.score = (function () {
       const s = gaps.reduce((a, b) => a + b) / 4;
       if (s > 3 && gaps.every(v => Math.abs(v - s) < s * 0.25)) { staves.push({ top: g[0], bottom: g[4], s }); i += 4; }
     }
-    if (!staves.length) throw new Error('não achei a pauta (5 linhas). Use uma imagem nítida e reta.');
+    if (!staves.length) throw new Error(EJ.t('score.err.staff'));
 
     // apaga as linhas da pauta (só onde a tinta é fina na vertical, para não cortar as notas)
     const clean = ink.slice();
@@ -255,7 +255,7 @@ EJ.score = (function () {
           marks.push({ x: c.cx / scale, y: c.cy / scale, r: s / scale * 0.7 });
         });
     });
-    if (!notes.length) throw new Error('achei a pauta, mas nenhuma nota cheia (preta).');
+    if (!notes.length) throw new Error(EJ.t('score.err.notes'));
     // acordes: notas quase na mesma posição horizontal tocam juntas
     const beat = 0.45, out = [];
     let t = 0, lastX = -1e9, lastStaff = -1;
@@ -276,11 +276,12 @@ EJ.score = (function () {
     if (kind === 'midi') return parseMIDI(await file.arrayBuffer());
     if (kind === 'mxl') return parseMusicXML(await unzipMXL(await file.arrayBuffer()));
     if (kind === 'xml') return parseMusicXML(await file.text());
-    throw new Error('formato não suportado');
+    throw new Error(EJ.t('score.err.format'));
   }
 
   const NAMES = ['dó', 'dó#', 'ré', 'ré#', 'mi', 'fá', 'fá#', 'sol', 'sol#', 'lá', 'lá#', 'si'];
-  const noteName = m => NAMES[((m % 12) + 12) % 12] + (Math.floor(m / 12) - 1);
+  const NAMES_EN = ['C', 'C sharp', 'D', 'D sharp', 'E', 'F', 'F sharp', 'G', 'G sharp', 'A', 'A sharp', 'B'];
+  const noteName = m => (EJ.i18n && EJ.i18n.lang === 'en' ? NAMES_EN : NAMES)[((m % 12) + 12) % 12] + (Math.floor(m / 12) - 1);
 
   return { load, readImage, parseMusicXML, parseMIDI, isScoreFile: n => !!KIND(n), noteName };
 })();

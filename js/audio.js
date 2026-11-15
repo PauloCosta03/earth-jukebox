@@ -16,20 +16,20 @@ EJ.audio = (function () {
 
   // Escalas por nível de tensão (0..1): do consonante ao instável.
   const MODES = [
-    { max: 0.30, name: 'pentatônica maior', steps: [0, 2, 4, 7, 9] },
-    { max: 0.45, name: 'mixolídio',         steps: [0, 2, 4, 5, 7, 9, 10] },
-    { max: 0.60, name: 'menor natural',     steps: [0, 2, 3, 5, 7, 8, 10] },
-    { max: 0.80, name: 'frígio',            steps: [0, 1, 3, 5, 7, 8, 10] },
-    { max: 1.01, name: 'lócrio',            steps: [0, 1, 3, 5, 6, 8, 10] }
+    { max: 0.30, name: 'pentatônica maior', en: 'major pentatonic', steps: [0, 2, 4, 7, 9] },
+    { max: 0.45, name: 'mixolídio',         en: 'Mixolydian',       steps: [0, 2, 4, 5, 7, 9, 10] },
+    { max: 0.60, name: 'menor natural',     en: 'natural minor',    steps: [0, 2, 3, 5, 7, 8, 10] },
+    { max: 0.80, name: 'frígio',            en: 'Phrygian',         steps: [0, 1, 3, 5, 7, 8, 10] },
+    { max: 1.01, name: 'lócrio',            en: 'Locrian',          steps: [0, 1, 3, 5, 6, 8, 10] }
   ];
   const modeFor = t => MODES.find(m => t < m.max) || MODES[MODES.length - 1];
 
   // Perfis de som: ajustam como as características da imagem viram música.
   const PROFILES = {
-    balanced: { label: 'Equilibrado',                      padVol: .50, padEvery: 4, arpMax: 3, arpWave: 'triangle', arpDecay: .35, hat: .6,  thump: .5,  motionGain: 1, pitchFrom: 'row' },
-    pulse:    { label: 'Pulso (luzes, relâmpagos)',        padVol: .25, padEvery: 8, arpMax: 4, arpWave: 'sine',     arpDecay: .18, hat: .9,  thump: 1.0, motionGain: 2, pitchFrom: 'row' },
-    flow:     { label: 'Fluxo (correntes, aerossóis)',     padVol: .85, padEvery: 3, arpMax: 1, arpWave: 'sine',     arpDecay: .80, hat: .15, thump: .1,  motionGain: 1, pitchFrom: 'row' },
-    forest:   { label: 'Floresta (cor → altura/ritmo)',    padVol: .40, padEvery: 4, arpMax: 4, arpWave: 'square',   arpDecay: .22, hat: .3,  thump: .3,  motionGain: 1, pitchFrom: 'hue' }
+    balanced: { label: 'Equilibrado', en: 'Balanced',                      padVol: .50, padEvery: 4, arpMax: 3, arpWave: 'triangle', arpDecay: .35, hat: .6,  thump: .5,  motionGain: 1, pitchFrom: 'row' },
+    pulse:    { label: 'Pulso (luzes, relâmpagos)', en: 'Pulse (lights, lightning)',        padVol: .25, padEvery: 8, arpMax: 4, arpWave: 'sine',     arpDecay: .18, hat: .9,  thump: 1.0, motionGain: 2, pitchFrom: 'row' },
+    flow:     { label: 'Fluxo (correntes, aerossóis)', en: 'Flow (currents, aerosols)',     padVol: .85, padEvery: 3, arpMax: 1, arpWave: 'sine',     arpDecay: .80, hat: .15, thump: .1,  motionGain: 1, pitchFrom: 'row' },
+    forest:   { label: 'Floresta (cor → altura/ritmo)', en: 'Forest (color → pitch/rhythm)',    padVol: .40, padEvery: 4, arpMax: 4, arpWave: 'square',   arpDecay: .22, hat: .3,  thump: .3,  motionGain: 1, pitchFrom: 'hue' }
   };
 
   let ctx, master, mix, comp, recDest, shaper, lp, droneOsc, droneOsc2, droneGain, noiseBuf,

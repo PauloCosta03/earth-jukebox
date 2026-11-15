@@ -28,6 +28,7 @@ ICONS = {
     "text": ["type"], "contrast": ["contrast"], "motion": ["turtle", "pause-circle"], "help": ["circle-help"],
     "low": ["leaf"], "mid": ["cloud-sun"], "high": ["flame"],
     "ev-prev": ["skip-back"], "ev-next": ["skip-forward"], "story": ["book-open-text", "book-open"],
+    "lang": ["languages"],
 }
 
 

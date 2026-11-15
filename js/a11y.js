@@ -12,6 +12,7 @@ window.EJ = window.EJ || {};
 EJ.a11y = (function () {
   const $ = id => document.getElementById(id);
   const body = document.body, app = $('app'), uiShow = $('ui-show');
+  const T = EJ.t;                                                    // textos no idioma atual
 
   // ------------------------------------------------------------------ opções salvas
   const KEY = 'ej-a11y';
@@ -29,19 +30,25 @@ EJ.a11y = (function () {
 
   // ================================================================== 1. NARRAÇÃO
   const synth = window.speechSynthesis;
-  let voice = null, welcomed = false;
-  function pickVoice() {
+  // uma voz por idioma: prefere as vozes "naturais/online/neural" (soam muito melhor no Edge)
+  let welcomed = false;
+  const voices = {};
+  function pickVoices() {
     if (!synth) return;
     const vs = synth.getVoices();
-    voice = vs.find(v => /pt-BR/i.test(v.lang) && /natural|online|neural/i.test(v.name))
-         || vs.find(v => /pt-BR/i.test(v.lang)) || vs.find(v => /^pt/i.test(v.lang)) || null;
+    const best = (exact, base) => vs.find(v => exact.test(v.lang) && /natural|online|neural/i.test(v.name))
+      || vs.find(v => exact.test(v.lang)) || vs.find(v => base.test(v.lang)) || null;
+    voices.pt = best(/pt-BR/i, /^pt/i);
+    voices.en = best(/en-US/i, /^en/i);
   }
-  if (synth) { pickVoice(); synth.addEventListener?.('voiceschanged', pickVoice); }
+  if (synth) { pickVoices(); synth.addEventListener?.('voiceschanged', pickVoices); }
+  const langKey = l => (/^en/i.test(l || '') ? 'en' : 'pt');
 
   let speaking = 0;
   const duck = on => { try { EJ.audio && EJ.audio.duck(on); } catch (e) { /* áudio ainda não iniciou */ } };
   // fala um texto. Textos longos são divididos em frases (o Chrome corta falas muito longas).
-  function speak(text, { interrupt = true, force = false, onDone = null } = {}) {
+  // lang: idioma desta fala ('pt-BR' / 'en'); por padrão, o idioma atual do site
+  function speak(text, { interrupt = true, force = false, onDone = null, lang = null } = {}) {
     if (!synth || !text || (!opt.voice && !force)) { if (onDone) onDone(false); return; }
     if (interrupt) { synth.cancel(); speaking = 0; }
     const parts = String(text).replace(/\s+/g, ' ').match(/[^.!?;:]+[.!?;:]?/g) || [text];
@@ -53,7 +60,8 @@ EJ.a11y = (function () {
     const list = chunks.filter(Boolean);
     list.forEach((c, i) => {
       const u = new SpeechSynthesisUtterance(c);
-      u.lang = 'pt-BR'; if (voice) u.voice = voice;
+      const k = langKey(lang || EJ.i18n.speechLang());
+      u.lang = k === 'en' ? 'en-US' : 'pt-BR'; if (voices[k]) u.voice = voices[k];
       u.rate = opt.rate; u.pitch = 1;
       u.onstart = () => { speaking++; duck(true); };
       u.onend = u.onerror = () => {
@@ -82,28 +90,28 @@ EJ.a11y = (function () {
   }
   function stateOf(el) {
     const s = [];
-    if (el.getAttribute('role') === 'switch') s.push(isOn(el) ? 'Ligado.' : 'Desligado.', 'Espaço ou Enter alterna.');
-    if (el.hasAttribute('aria-expanded')) s.push(el.getAttribute('aria-expanded') === 'true' ? 'Painel aberto.' : 'Painel fechado.');
+    if (el.getAttribute('role') === 'switch') s.push(T(isOn(el) ? 'a.on' : 'a.off'), T('a.toggleHint'));
+    if (el.hasAttribute('aria-expanded')) s.push(T(el.getAttribute('aria-expanded') === 'true' ? 'a.panelOpen' : 'a.panelClosed'));
     if (el.hasAttribute('aria-pressed')) {
       const p = el.getAttribute('aria-pressed') === 'true';
-      if (el.classList.contains('mute-layer')) s.push(p ? 'Agora está silenciado.' : 'Agora está tocando.');
-      else if (el.classList.contains('solo')) s.push(p ? 'Solo ligado.' : '');
-      else if (el.id === 'mute') s.push(p ? 'A música está silenciada.' : '');
-      else s.push(p ? 'Ativado.' : 'Desativado.');
+      if (el.classList.contains('mute-layer')) s.push(T(p ? 'a.muted' : 'a.playing'));
+      else if (el.classList.contains('solo')) s.push(p ? T('a.soloOn') : '');
+      else if (el.id === 'mute') s.push(p ? T('a.musicMuted') : '');
+      else s.push(T(p ? 'a.active' : 'a.inactive'));
     }
-    if (el.type === 'checkbox') s.push(el.checked ? 'Marcado.' : 'Desmarcado.');
+    if (el.type === 'checkbox') s.push(T(el.checked ? 'a.checked' : 'a.unchecked'));
     if (el.type === 'radio') {
       const group = [...document.querySelectorAll(`input[name="${el.name}"]`)];
-      s.push(`Opção ${group.indexOf(el) + 1} de ${group.length}${el.checked ? ', selecionada' : ''}. Setas trocam a opção.`);
+      s.push(T('a.radio', { i: group.indexOf(el) + 1, n: group.length, sel: el.checked ? T('a.selected') : '' }));
     }
-    if (el.type === 'range') s.push('Valor: ' + (el.getAttribute('aria-valuetext') || el.value) + '.');
-    if (el.tagName === 'SELECT') s.push('Selecionado: ' + (el.selectedOptions[0] ? el.selectedOptions[0].textContent : '') + '.');
+    if (el.type === 'range') s.push(T('a.value', { v: el.getAttribute('aria-valuetext') || el.value }));
+    if (el.tagName === 'SELECT') s.push(T('a.chosen', { v: el.selectedOptions[0] ? el.selectedOptions[0].textContent : '' }));
     if (el.classList.contains('solo')) {
       const val = el.querySelector('.val');
-      if (val && val.textContent !== '–') s.push('Valor no ano atual: ' + val.textContent + '.');
+      if (val && val.textContent !== '–') s.push(T('a.yearValue', { v: val.textContent }));
     }
-    if (el.tagName === 'A' && el.target === '_blank') s.push('Link, abre em nova aba.');
-    if (el.disabled) s.push('Indisponível agora.');
+    if (el.tagName === 'A' && el.target === '_blank') s.push(T('a.newTab'));
+    if (el.disabled) s.push(T('a.disabled'));
     return s.filter(Boolean).join(' ');
   }
   function describe(el) {
@@ -111,16 +119,17 @@ EJ.a11y = (function () {
     return `${what} ${stateOf(el)}`.trim();
   }
 
-  const WELCOME = 'Earth Jukebox, a música do clima. A narração por voz está ligada: cada botão diz o que faz quando você chega nele com Tab. ' +
-    'Se você já usa um leitor de tela, aperte V para desligar a narração. Aperte interrogação para ver os atalhos, ou espaço para tocar.';
-
+  const dlg = $('lang-dialog');
   document.addEventListener('focusin', e => {
     const el = e.target;
     if (lastInput !== 'keyboard' || el === document.body) return;
     chimeFocus(el);
     if (!opt.voice) return;
-    if (!welcomed) { welcomed = true; speak(WELCOME); speak(describe(el), { interrupt: false }); return; }
-    speak(describe(el));
+    // cada controle é falado no idioma em que está escrito (ex.: "English" na caixa de idioma)
+    const lang = el.closest('[lang]') ? el.closest('[lang]').getAttribute('lang') : null;
+    if (dlg.open) { speak(el.dataset.say || nameOf(el), { lang }); return; }
+    if (!welcomed) { welcomed = true; speak(T('a.welcome')); speak(describe(el), { interrupt: false }); return; }
+    speak(describe(el), { lang });
   });
 
   // mudanças de estado do elemento em foco (ligar/desligar, silenciar...) são faladas e "soam"
@@ -133,10 +142,10 @@ EJ.a11y = (function () {
       const on = v === 'true';
       if (el.getAttribute('role') === 'switch' || m.attributeName === 'aria-pressed') chime(on ? 'on' : 'off');
       if (el !== document.activeElement) continue;
-      if (el.getAttribute('role') === 'switch') speak(`${nameOf(el)}: ${on ? 'ligado' : 'desligado'}.`);
-      else if (el.classList.contains('mute-layer')) speak(on ? 'Silenciado.' : 'Tocando de novo.');
-      else if (el.classList.contains('solo')) speak(on ? `Ouvindo só ${nameOf(el.querySelector('.lbl') || el)}.` : 'Todos os instrumentos de volta.');
-      else if (el.id === 'mute') speak(on ? 'Música silenciada.' : 'Música de volta.');
+      if (el.getAttribute('role') === 'switch') speak(T('a.switchState', { name: nameOf(el), state: T(on ? 'a.onWord' : 'a.offWord') }));
+      else if (el.classList.contains('mute-layer')) speak(T(on ? 'a.layerMuted' : 'a.layerBack'));
+      else if (el.classList.contains('solo')) speak(on ? T('a.soloOnly', { name: nameOf(el.querySelector('.lbl') || el) }) : T('a.allBack'));
+      else if (el.id === 'mute') speak(T(on ? 'a.musicOff' : 'a.musicOn'));
       else if (el.id === 'fullscreen') { /* falado no evento de tela cheia */ }
     }
   }).observe(body, { subtree: true, attributes: true, attributeOldValue: true,
@@ -150,10 +159,10 @@ EJ.a11y = (function () {
 
   // controles deslizantes: fala o valor na hora (a descrição completa vem depois, pela região viva)
   $('slider').addEventListener('input', e => { if (lastInput === 'keyboard') speak(String(e.target.value)); });
-  $('volume').addEventListener('input', e => { if (lastInput === 'keyboard') speak(e.target.value + ' por cento'); });
+  $('volume').addEventListener('input', e => { if (lastInput === 'keyboard') speak(T('fmt.pct', { v: e.target.value })); });
   $('loop').addEventListener('change', e => {
     chime(e.target.checked ? 'on' : 'off');
-    if (lastInput === 'keyboard') speak(e.target.checked ? 'Repetir ligado.' : 'Repetir desligado.');
+    if (lastInput === 'keyboard') speak(T(e.target.checked ? 'a.repeatOn' : 'a.repeatOff'));
   });
 
   // ================================================================== 2. SONS DA INTERFACE
@@ -203,8 +212,8 @@ EJ.a11y = (function () {
     app.inert = hide;                                                 // ninguém tropeça em botões invisíveis
     uiShow.hidden = !hide;
     chime(hide ? 'hide' : 'show');
-    if (hide) { uiShow.focus(); speak('Interface escondida. Aperte H, ou o botão Mostrar interface no canto inferior direito, para trazer os botões de volta.'); }
-    else { $('ui-hide').focus(); speak('Interface de volta.'); }
+    if (hide) { uiShow.focus(); speak(T('a.hidden')); }
+    else { $('ui-hide').focus(); speak(T('a.shown')); }
   }
   $('ui-hide').onclick = () => setUiHidden(true);
   uiShow.onclick = () => setUiHidden(false);
@@ -220,17 +229,17 @@ EJ.a11y = (function () {
     const on = !!document.fullscreenElement;
     EJ.ui.setIcon(fsBtn, on ? 'minimize' : 'maximize');
     fsBtn.setAttribute('aria-pressed', String(on));
-    fsBtn.setAttribute('aria-label', on ? 'Sair da tela cheia' : 'Tela cheia');
+    fsBtn.setAttribute('aria-label', T(on ? 'a.fsExit' : 'a.fsEnter'));
     chime(on ? 'full' : 'unfull');
-    speak(on ? 'Tela cheia. Aperte F ou Esc para sair.' : 'Saiu da tela cheia.');
+    speak(T(on ? 'a.fsOn' : 'a.fsOff'));
   });
 
-  const zoomSay = () => EJ.globe && speak(`Zoom ${EJ.globe.zoomLevel()} por cento.`);
+  const zoomSay = () => EJ.globe && speak(T('a.zoom', { v: EJ.globe.zoomLevel() }));
   const zoom = kind => {
     if (!EJ.globe) return;
     if (kind === 'in') { EJ.globe.zoomIn(); chime('zoomIn'); }
     else if (kind === 'out') { EJ.globe.zoomOut(); chime('zoomOut'); }
-    else { EJ.globe.resetView(); chime('show'); speak('Terra centralizada.'); return; }
+    else { EJ.globe.resetView(); chime('show'); speak(T('a.centered')); return; }
     if (lastInput === 'keyboard') zoomSay();
   };
   $('zoom-in').onclick = () => zoom('in');
@@ -247,6 +256,7 @@ EJ.a11y = (function () {
     if (/^[fF]$/.test(k)) toggleFullscreen();
     else if (/^[hH]$/.test(k)) setUiHidden(!body.classList.contains('ui-hidden'));
     else if (/^[vV]$/.test(k)) setVoice(!opt.voice);
+    else if (/^[lL]$/.test(k)) openLang(e.target);
     else if (k === '+' || k === '=') zoom('in');
     else if (k === '-' || k === '_') zoom('out');
     else if (k === '0' && e.target.type !== 'range') zoom('reset');
@@ -258,9 +268,9 @@ EJ.a11y = (function () {
   // ================================================================== 4. OPÇÕES
   function setSwitch(id, on) { $(id).setAttribute('aria-checked', String(on)); }
   function setVoice(on) {
-    if (!on) speak('Narração desligada. Aperte V para ligar de novo.', { force: true });
+    if (!on) speak(T('a.voiceOff'), { force: true });
     opt.voice = on; save(); setSwitch('opt-voice', on);
-    if (on) speak('Narração ligada.');
+    if (on) speak(T('a.voiceOn'));
   }
   function apply() {
     setSwitch('opt-voice', opt.voice);
@@ -285,12 +295,11 @@ EJ.a11y = (function () {
   // modo "Contar a história": mesmo estado no painel Acessibilidade e no botão de livro da barra
   const setStory = on => {
     opt.story = on; save(); apply();
-    speak(on ? 'Contar a história ligado: a música pausa em cada acontecimento para contar o que aconteceu e o impacto na Terra.'
-             : 'Contar a história desligado: a música toca sem pausas.');
+    speak(T(on ? 'a.storyOn' : 'a.storyOff'));
   };
   $('opt-story').onclick = () => setStory(!opt.story);
   $('story').onclick = () => setStory(!opt.story);
-  $('opt-rate').onchange = e => { opt.rate = +e.target.value; save(); speak('Velocidade da voz ajustada.'); };
+  $('opt-rate').onchange = e => { opt.rate = +e.target.value; save(); speak(T('a.rate')); };
   document.querySelectorAll('input[name="opt-size"]').forEach(r => r.addEventListener('change', () => {
     opt.size = +r.value; save(); apply();
     dispatchEvent(new Event('resize'));                               // redesenha o gráfico no novo tamanho
@@ -300,16 +309,49 @@ EJ.a11y = (function () {
   });
 
   // guia falado (botão "Ouvir o guia")
-  const TOUR = [
-    'Guia do Earth Jukebox.',
-    'No centro da tela está a Terra em 3D. Cada dado do clima medido pela NASA vira um instrumento: a temperatura é a melodia, o gás carbônico é um som grave, o gelo do Ártico são sinos e o nível do mar são ondas.',
-    'Embaixo fica a barra de reprodução: o botão Tocar, o ano atual e a linha do tempo de 1880 a 2100. Até 2025 são medições; depois, projeções do modelo da NASA. Quanto mais quente, menos harmônica a música.',
-    'No topo ficam cinco painéis: Camadas, para ligar o que aparece no globo e escolher o cenário do futuro; Instrumentos, para ouvir cada som sozinho; Ouvir, para transformar imagens e partituras em música; Acessibilidade; e Sobre.',
-    'Atalhos: espaço toca e pausa; setas mudam o ano; D descreve a tela; V liga ou desliga esta narração; H esconde os botões; F deixa em tela cheia; mais e menos aproximam e afastam a Terra.',
-    'Aperte Tab para começar a explorar. Boa viagem pelo clima do planeta.',
-  ].join(' ');
-  $('tour').onclick = () => speak(TOUR, { force: true });
+  $('tour').onclick = () => speak(T('a.tour'), { force: true });
+
+  // ================================================================== 5. IDIOMA
+  // Caixa modal (<dialog>): prende o foco, Esc fecha. Aparece no 1º acesso; L e os botões reabrem.
+  let langOpener = null;
+  function updateLangBtn() {
+    $('lang-btn').querySelector('.lang-now').textContent = EJ.i18n.lang === 'en' ? 'EN' : 'PT';
+    $('lang-btn').setAttribute('aria-label', T('lang.btn'));
+    dlg.querySelectorAll('.lang-opt').forEach(b => b.classList.toggle('current', b.dataset.lang === EJ.i18n.lang));
+  }
+  function openLang(from) {
+    if (dlg.open) return;
+    langOpener = from && from !== document.body ? from : null;
+    updateLangBtn();
+    dlg.showModal();
+    dlg.querySelector(`.lang-opt[data-lang="${EJ.i18n.lang}"]`).focus();     // começa no idioma atual
+  }
+  function choose(l) {
+    const first = !EJ.i18n.chosen;
+    dlg.close();
+    EJ.i18n.set(l);
+    EJ.i18n.markChosen();
+    pickVoices();
+    updateLangBtn();
+    if (opt.voice) {                                                       // confirma no idioma escolhido
+      speak(T('a.langSet') + (first ? ' ' + T('a.welcome') : ''), { force: false });
+      welcomed = true;
+    }
+    if (langOpener && document.contains(langOpener)) langOpener.focus();
+  }
+  dlg.querySelectorAll('.lang-opt').forEach(b => (b.onclick = () => choose(b.dataset.lang)));
+  dlg.addEventListener('cancel', e => { e.preventDefault(); choose(EJ.i18n.lang); });   // Esc: mantém o idioma atual
+  $('lang-btn').onclick = e => openLang(e.currentTarget);
+  $('opt-lang').onclick = e => openLang(e.currentTarget);
+  EJ.i18n.onChange(() => {                                                 // rótulos que o a11y controla
+    const fs = !!document.fullscreenElement;
+    fsBtn.setAttribute('aria-label', T(fs ? 'a.fsExit' : 'a.fsEnter'));
+    updateLangBtn();
+  });
+  updateLangBtn();
+  fsBtn.setAttribute('aria-label', T('a.fsEnter'));
+  if (!EJ.i18n.chosen) openLang(null);                                     // primeiro acesso: pergunta o idioma
 
   apply();
-  return { speak, speakAsync, quiet, chime, describe, options: opt };
+  return { speak, speakAsync, quiet, chime, describe, openLang, options: opt };
 })();

@@ -68,6 +68,7 @@ A interface fica em três faixas: **topo** (menu e visualização), **painel lat
 
 - **Narração por voz** (`js/a11y.js`): ao navegar com **Tab**, cada controle diz em voz alta o que faz e o estado atual (ligado/desligado, valor, aberto/fechado). A música abaixa enquanto a voz fala. Texto de cada controle no atributo `data-say` do `index.html`. Tecla **V** liga/desliga (para quem já usa leitor de tela).
 - **Contar a história** (botão de livro na barra, ou no painel Acessibilidade): a música **pausa em cada acontecimento** de 1880 a 2025 (`js/events.js`) e a voz — ou o leitor de tela — conta o que aconteceu, o **impacto na Terra** e os dados medidos naquele ano; depois continua sozinha. Após 2025, marcos do futuro (2026, 2040, 2050, 2075, 2100) são montados com os dados do modelo da NASA para o cenário escolhido. **[ ]** e os botões ⏮ ⏭ pulam entre acontecimentos.
+- **Dois idiomas: português e inglês** (`js/i18n.js`): no primeiro acesso, uma caixa pergunta o idioma (já focada no idioma do navegador; cada opção é falada no próprio idioma). A escolha muda **tudo**: textos, rótulos de leitor de tela (`aria-label`), narração por voz (voz pt-BR ou en-US), acontecimentos, descrições e mensagens. Fica salva no navegador; o botão **PT/EN** no topo, o painel Acessibilidade ou a tecla **L** trocam a qualquer momento. O `<html lang>` acompanha, para o leitor de tela pronunciar certo. Para traduzir mais textos: frases do código ficam em `S` (`EJ.t('chave')`) e textos do HTML no mapa `DOM` (seletor → inglês); o português continua escrito no próprio `index.html`.
 - **Sons da interface**: toques curtos na mesma tonalidade da música (lá maior pentatônica) ao navegar, ligar/desligar e abrir painéis — dá para "ouvir" onde se está.
 - **Painel Acessibilidade**: narração, velocidade da voz, sons da interface, tamanho do texto, alto contraste, reduzir movimento, guia falado e lista de atalhos.
 - **Esconder a interface** (botão de olho ou **H**) e **tela cheia** (**F**).
@@ -81,7 +82,7 @@ A interface fica em três faixas: **topo** (menu e visualização), **painel lat
 | ← → | ano (Shift: 10 anos) | H | esconder / mostrar interface |
 | D | descrever a tela | F | tela cheia |
 | S | varrer a imagem | ? | painel Acessibilidade |
-| [ ] | acontecimento anterior / próximo | | |
+| [ ] | acontecimento anterior / próximo | L | trocar idioma (PT / EN) |
 | M | silenciar a música | Esc | fecha o painel |
 
 ## Estrutura
@@ -99,6 +100,7 @@ js/vision.js                visão computacional: imagem → características mu
 js/score.js                 partituras: MusicXML, MIDI e leitura óptica de imagem → notas
 tests/                      testes automáticos (node --test tests/)
 js/main.js                  interface e controles
+js/i18n.js                  idiomas (português / inglês): textos, rótulos e caixa de escolha
 js/a11y.js                  narração por voz, sons da interface, tela cheia, esconder interface, zoom, opções
 js/vendor/                  three.js + OrbitControls (empacotados p/ funcionar offline)
 data/historical.js          séries observadas (GERADO pelo script)
