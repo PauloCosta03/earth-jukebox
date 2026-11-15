@@ -64,7 +64,7 @@
     const v = EJ.at(cur);
     const on = EJ.globe ? Object.keys(EJ.globe.layers).filter(k => k !== 'spin' && EJ.globe.layers[k]) : [];
     const names = { lights: 'luzes', sea: 'inundação', ice: 'gelo', heat: 'mapa de calor', clouds: 'nuvens',
-                    ndvi: 'vegetação', fire: 'queimadas', wind: 'ventos', ozone: 'ozônio', relief: 'relevo' };
+                    ndvi: 'vegetação', fire: 'queimadas', wind: 'ventos', ozone: 'ozônio' };
     return `${cur}${v.projected ? ', projeção ' + scenarioLabel() : ''}. ` +
       `Temperatura ${fmt.temp(v.temp)} em relação à média de 1951 a 1980; CO₂ ${fmt.co2(v.co2)}; ` +
       `gelo do Ártico ${fmt.ice(v.ice)}; nível do mar ${fmt.sea(v.sea)} em relação a 1993. ` +

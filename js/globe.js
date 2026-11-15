@@ -104,7 +104,7 @@ function init() {
     uIceEdge: { value: 76 }, uIceOn: { value: 1 },
     uAtmoColor: { value: new THREE.Color(0x3f7dff) },
     uTime: { value: 0 },
-    uRelief: { value: 1 },                                      // ⛰️ intensidade do relevo (0 = liso)
+    uRelief: { value: 1 },                                      // ⛰️ relevo sempre ligado (0 = liso)
     // camadas com atlas: textura, grade (colunas, linhas, largura e altura do quadro)
     // e F = (quadro A, quadro B, mistura) para transição suave entre anos
     uTempTex: { value: A.temp.tex }, uTempGrid: { value: A.temp.grid }, uTempF: { value: new THREE.Vector3() },
@@ -122,6 +122,24 @@ function init() {
       vUv = uv;
       vN = normalize(mat3(modelMatrix) * normal);
       vec4 wp = modelMatrix * vec4(position, 1.0);
+      vPos = wp.xyz;
+      gl_Position = projectionMatrix * viewMatrix * wp;
+    }`;
+
+  // ⛰️ Vértices da Terra: sobe cada ponto de terra firme conforme a altitude (relevo de verdade,
+  // visível na borda do planeta). Exagero vertical ~20x: em escala real o Everest teria 0,14%
+  // do raio e seria invisível. O oceano não sobe.
+  const RELIEF_HEIGHT = 0.03;                                   // altura máxima (fração do raio)
+  const EARTH_VERT = /* glsl */`
+    uniform sampler2D uTopo, uWater;
+    varying vec2 vUv; varying vec3 vN; varying vec3 vPos;
+    void main(){
+      vUv = uv;
+      float land = 1.0 - texture2D(uWater, uv).r;
+      float h = texture2D(uTopo, uv).r * land;                  // 0 no mar … 1 nos picos mais altos
+      vec3 p = position * (1.0 + h * ${RELIEF_HEIGHT.toFixed(4)});
+      vN = normalize(mat3(modelMatrix) * normal);
+      vec4 wp = modelMatrix * vec4(p, 1.0);
       vPos = wp.xyz;
       gl_Position = projectionMatrix * viewMatrix * wp;
     }`;
@@ -262,8 +280,8 @@ function init() {
   tilt.rotation.z = THREE.MathUtils.degToRad(-23.4);
   scene.add(tilt);
   const earth = new THREE.Mesh(
-    new THREE.SphereGeometry(1, 96, 96),
-    new THREE.ShaderMaterial({ uniforms: U, vertexShader: VERT, fragmentShader: FRAG })
+    new THREE.SphereGeometry(1, 720, 360),                     // malha fina: o relevo precisa de vértices
+    new THREE.ShaderMaterial({ uniforms: U, vertexShader: EARTH_VERT, fragmentShader: FRAG })
   );
   tilt.add(earth);
 
@@ -297,7 +315,7 @@ function init() {
                    uMix: { value: 0 }, uSunDir: { value: SUN }, uOn: { value: 1 } };
   let cloudT = 0;                                                // "relógio" das nuvens, em dias
   const clouds = new THREE.Mesh(
-    new THREE.SphereGeometry(1.012, 96, 96),
+    new THREE.SphereGeometry(1.034, 96, 96),
     new THREE.ShaderMaterial({
       uniforms: cloudU, vertexShader: VERT, transparent: true, depthWrite: false,
       fragmentShader: /* glsl */`
@@ -355,7 +373,7 @@ function init() {
                                               blending: THREE.AdditiveBlending, depthWrite: false });
     const lines = new THREE.LineSegments(geo, mat);
     earth.add(lines);                                            // gira junto com a Terra
-    const R = 1.016, D2R = Math.PI / 180;
+    const R = 1.038, D2R = Math.PI / 180;
     // mesma conversão lat/lon -> xyz que a SphereGeometry usa para a textura
     function xyz(la, lo, out, o) {
       const phi = (lo + 180) * D2R, th = (90 - la) * D2R;
@@ -408,7 +426,7 @@ function init() {
 
   // ---------- estado e alvos (interpolados p/ transições suaves) ----------
   const layers = { lights: true, sea: true, ice: true, heat: false, spin: true,
-                   clouds: true, ndvi: false, fire: false, wind: false, ozone: false, relief: true };
+                   clouds: true, ndvi: false, fire: false, wind: false, ozone: false };
   const T = { heat: 0, lights: 0, sea: 0, iceEdge: 76, atmo: 0.25, year: EJ.YEAR_MIN };
   let yearCur = EJ.YEAR_MIN;                                     // ano que desliza suavemente até T.year
   const on = { ndvi: 0, fire: 0, wind: 0, heat: 0, ozone: 0 };  // disponibilidade × botão, suavizados
@@ -478,7 +496,6 @@ function init() {
     U.uLightsOn.value += ((layers.lights ? 1 : 0) - U.uLightsOn.value) * k;
     U.uSeaOn.value += ((layers.sea ? 1 : 0) - U.uSeaOn.value) * k;
     U.uIceOn.value += ((layers.ice ? 1 : 0) - U.uIceOn.value) * k;
-    U.uRelief.value += ((layers.relief ? 1 : 0) - U.uRelief.value) * k;
     curAtmo += (T.atmo - curAtmo) * k;
     U.uAtmoColor.value.copy(COLD).lerp(HOT, U.uHeat.value * (layers.heat ? 1 : 0) * 0.9);
     atmoU.uIntensity.value = 0.75 + curAtmo * 1.0;
