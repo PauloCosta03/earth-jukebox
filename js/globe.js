@@ -112,6 +112,11 @@ function init() {
     uNdviOn: { value: 0 },
     uFireTex: { value: A.fire.tex }, uFireGrid: { value: A.fire.grid }, uFireF: { value: new THREE.Vector3() },
     uFireOn: { value: 0 },
+    // 🌊 água: textura das correntes (R=leste, G=norte, B=é mar) e força da visualização
+    uOcean: { value: L.ocean ? (() => { const o = loader.load(L.ocean.atlas); o.generateMipmaps = false;
+                                         o.minFilter = THREE.LinearFilter; return o; })() : null },
+    uOceanOn: { value: 0 },
+    uAxis: { value: new THREE.Vector3(0, 1, 0) },               // eixo norte da Terra (para as ondas)
     uOzoneTex: { value: A.ozone.tex }, uOzoneGrid: { value: A.ozone.grid }, uOzoneF: { value: new THREE.Vector3() },
     uOzoneOn: { value: 0 }
   };
@@ -164,7 +169,9 @@ function init() {
       vec3 grad = sign(det) * (dHx * r1 + dHy * r2);
       return normalize(abs(det) * n - grad);
     }
-    uniform float uTime, uNdviOn, uFireOn, uOzoneOn;
+    uniform float uTime, uNdviOn, uFireOn, uOzoneOn, uOceanOn;
+    uniform sampler2D uOcean;
+    uniform vec3 uAxis;
     uniform sampler2D uTempTex, uNdviTex, uFireTex, uOzoneTex;
     uniform vec4 uTempGrid, uNdviGrid, uFireGrid, uOzoneGrid;
     uniform vec3 uTempF, uNdviF, uFireF, uOzoneF;
@@ -191,7 +198,8 @@ function init() {
       return vec4(c, smoothstep(0.25, 1.6, abs(a)) * 0.82);
     }
 
-    float hash(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+    // ruído pseudoaleatório SEM sin(): estável em qualquer placa de vídeo (Dave Hoskins, hash12)
+    float hash(vec2 p){ vec3 p3 = fract(vec3(p.xyx) * .1031); p3 += dot(p3, p3.yzx + 33.33); return fract((p3.x + p3.y) * p3.z); }
     float vnoise(vec2 p){
       vec2 i = floor(p), f = fract(p);
       vec2 u = f * f * (3.0 - 2.0 * f);
@@ -239,13 +247,44 @@ function init() {
 
       // --- iluminação (sol fixo; a Terra gira => dia e noite)
       // relevo só em terra firme (sem gelo/inundação por cima)
+      // --- 🌊 ÁGUA EM MOVIMENTO (flow map)
+      // Um padrão de ondas (ruído) é arrastado na direção e velocidade das correntes reais.
+      // Truque das duas fases: duas cópias do padrão, defasadas meio ciclo; enquanto uma
+      // "reinicia", a outra está no auge — assim o arrasto nunca estica nem dá salto.
+      vec3 oc = texture2D(uOcean, vUv).rgb;
+      vec2 cur = ((oc.rg * 255.0 - 1.0) / 254.0 * 2.0 - 1.0) * step(0.5, oc.b);   // m/s (leste, norte)
+      float cl = max(cos(radians(lat)), 0.2);
+      vec2 flowDeg = vec2(cur.x / cl, cur.y) * 14.0 * uOceanOn;                 // graus por ciclo
+      vec2 base = vec2(lon, lat) * 1.1 + vec2(uTime * 0.12, uTime * 0.04);       // ondas sempre derivam
+      float T = uTime * 0.22, p0 = fract(T), p1 = fract(T + 0.5);
+      float w0 = 1.0 - abs(2.0 * p0 - 1.0);
+      // altura das ondas num ponto do mapa (graus), já arrastada pela corrente
+      #define WAVE(b) (fbm((b) - flowDeg * p0) * w0 + fbm((b) + vec2(17.3, 9.1) - flowDeg * p1) * (1.0 - w0))
+      float hwBig = WAVE(base);
+      float hw = hwBig + 0.35 * vnoise(vec2(lon, lat) * 4.0 + uTime * 0.6);   // + marola fina (só na cor)
+      float sea = water * (1.0 - ice);                                           // só mar aberto
+      // a água muda de tom com as ondas; onde a corrente é forte, fica verde-azulada
+      float spd = smoothstep(0.04, 0.3, length(cur)) * uOceanOn;
+      day = mix(day, day * (0.82 + 0.36 * hw) + vec3(0.02, 0.16, 0.20) * spd * (0.4 + hw), sea);
+      // normal da água: inclinação das ondas para leste (gx) e norte (gy), medida no próprio mapa
+      vec3 nw = n;
+      if (sea > 0.01) {
+        float e = 0.15;
+        float gx = (WAVE(base + vec2(e, 0.0)) - hwBig) / e;
+        float gy = (WAVE(base + vec2(0.0, e)) - hwBig) / e;
+        vec3 east = normalize(cross(uAxis, n) + 1e-5), north = cross(n, east);
+        nw = normalize(n - 0.10 * sea * (gx * east + gy * north));
+      }
+
       vec3 nr = reliefNormal(vUv, n, vPos, 0.07 * uRelief * land * (1.0 - clamp(flood, 0.0, 1.0)));
       float sun = dot(nr, normalize(uSunDir));
       float dayAmt = clamp(sun * 1.6 + 0.12, 0.0, 1.0);
       vec3 viewDir = normalize(cameraPosition - vPos);
       vec3 h = normalize(normalize(uSunDir) + viewDir);
-      float spec = pow(max(dot(n, h), 0.0), 90.0) * water * dayAmt * (1.0 - ice);
-      vec3 col = day * (dayAmt * 1.05 + 0.05) + spec * vec3(0.9, 0.95, 1.0) * 0.5;
+      // brilho do sol na água: usa a normal das ondas, então o reflexo cintila e anda com a corrente
+      float spec = pow(max(dot(nw, h), 0.0), 70.0) * sea * dayAmt;
+      float glint = pow(max(dot(nw, h), 0.0), 600.0) * sea * dayAmt;
+      vec3 col = day * (dayAmt * 1.05 + 0.05) + spec * vec3(0.9, 0.95, 1.0) * 0.55 + glint * vec3(1.0) * 1.2;
 
       // --- 🌃 luzes das cidades no lado escuro (crescem com a industrialização)
       vec3 city = texture2D(uNight, vUv).rgb * vec3(1.0, 0.84, 0.58) * 2.6;
@@ -425,10 +464,7 @@ function init() {
 
   // 🌬️ vento médio da década (modelo GISS), acima das nuvens; branco-ciano
   const wind = makeFlow(L.wind, { N: 8000, R: 1.038, SPEED: 0.9, TAIL: 1.1, ref: 5, color: [0.75, 0.95, 1.0] });
-  // 🌊 correntes oceânicas (geostróficas, GISS), rente ao mar; verde-água. Correntes andam ~20x mais
-  //     devagar que o vento, então a velocidade visual é ampliada (SPEED maior).
-  const ocean = makeFlow(L.ocean, { N: 9000, R: 1.004, SPEED: 16, TAIL: 1.5, ref: 0.25,
-                                    color: [0.4, 1.6, 1.35], oceanOnly: true });
+  // 🌊 as correntes do mar são desenhadas no próprio shader da Terra (água em movimento)
 
   // Qual quadro do atlas mostrar para um ano: devolve { idx, ok } (ok=false se não há dado)
   // frames: { hist: [primeiro, último, índice inicial, passo], ssp126: [...], ... }
@@ -519,7 +555,8 @@ function init() {
     }
     if (wind) wind.step(dt, fW.F, on.wind * 0.9);
     on.ocean += ((layers.ocean ? 1 : 0) - on.ocean) * k;          // correntes: campo fixo (clima atual)
-    if (ocean) ocean.step(dt, [0, 0, 0], on.ocean * 0.9);
+    U.uOceanOn.value = on.ocean;
+    U.uAxis.value.set(0, 1, 0).applyQuaternion(tilt.quaternion);   // eixo inclinado 23,4°
     U.uTime.value += dt;
     U.uLightsOn.value += ((layers.lights ? 1 : 0) - U.uLightsOn.value) * k;
     U.uSeaOn.value += ((layers.sea ? 1 : 0) - U.uSeaOn.value) * k;

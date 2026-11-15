@@ -26,7 +26,7 @@ Terra renderizada com **three.js**, com **relevo 3D** (altitude real, exagero ve
 | 🌿 Vegetação | Mês de pico verde de cada ano, 2001–2025 | NASA GIBS — MODIS NDVI |
 | 🔥 Queimadas | Onde o fogo é frequente em cada ano, 2001–2025 | NASA GIBS — MODIS Thermal Anomalies |
 | 🌬️ Ventos | Partículas seguindo o vento médio de cada década, por cenário | Modelo GISS-E2.1-G (uas/vas) |
-| 🌊 Correntes do mar | Partículas seguindo as correntes de superfície (clima atual, 1985–2014) | Modelo GISS-E2.1-G: altura do mar (zos) → correntes geostróficas |
+| 🌊 Correntes do mar | Água animada (ondas + reflexo do sol) que escorre na direção e velocidade das correntes de superfície (clima atual, 1985–2014) | Modelo GISS-E2.1-G: altura do mar (zos) → correntes geostróficas |
 | 🛡️ Ozônio | Buraco de ozônio na Antártida (abaixo de 220 DU), set–out de cada ano, 1979–2025 | NASA Ozone Watch (TOMS, OMI) |
 
 ### Camadas de áudio (cards à direita)
