@@ -142,6 +142,7 @@
   playBtn.onclick = () => {
     EJ.audio.init();
     if (timer) { stop(); announce('Pausado.'); return; }
+    if (mode === 'frame' && media && media.score) { $('scan').click(); return; }   // partitura: Tocar = Varrer
     playBtn.textContent = '⏸ Pausar';
     mode === 'globe' ? startGlobe() : startFrame();
   };
@@ -175,9 +176,9 @@
     const f = EJ.vision.analyze(mode === 'frame' ? (media && media.el) : globeFrame());
     if (!f) { msg.textContent = 'Nenhum quadro disponível para varrer ainda.'; return; }
     lastF = f;
-    const secs = 6, tension = mode === 'frame' ? EJ.audio.tensionOf(null, f) : EJ.audio.tensionOf(EJ.at(cur), f);
-    // 🎼 modo partitura: imagens com "partitura" no nome tocam na escala maior (melodias conhecidas)
+    // 🎼 modo partitura: imagens com "partitura" no nome tocam na escala maior, em andamento de música
     const score = mode === 'frame' && media && media.score;
+    const secs = score ? 12 : 6, tension = mode === 'frame' ? EJ.audio.tensionOf(null, f) : EJ.audio.tensionOf(EJ.at(cur), f);
     EJ.audio.scan(f, secs, tension, score ? EJ.audio.MAJOR : null);
     const sl = $('scanline');
     sl.style.setProperty('--dur', secs + 's'); sl.classList.remove('run'); void sl.offsetWidth; sl.classList.add('run');
@@ -261,7 +262,7 @@
     media = { kind: video ? 'video' : 'image', el, url, name: file.name, score: /partitura/i.test(file.name) };
     EJ.vision.reset(); lastF = null;
     setMode('frame');
-    msg.textContent = `${file.name}: escolha um perfil de som e aperte Tocar ou Varrer.`;
+    msg.textContent = media.score ? `🎼 Partitura ${file.name}: aperte Tocar (ou S) para ouvir a melodia.` : `${file.name}: escolha um perfil de som e aperte Tocar ou Varrer.`;
     announce(`${video ? 'Vídeo' : 'Imagem'} ${file.name} carregado. Aperte tocar ou varrer para ouvir.`);
     const first = () => { lastF = EJ.vision.analyze(el); if (lastF) descEl.textContent = EJ.vision.describe(lastF); };
     video ? (el.onloadeddata = first) : (el.onload = first);

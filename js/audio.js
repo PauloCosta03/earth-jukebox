@@ -235,15 +235,25 @@ EJ.audio = (function () {
 
   // Varredura estilo "leitor de imagem": esquerda→direita; altura do pixel = altura da nota,
   // brilho = volume, posição horizontal = panorâmica, matiz quente = timbre áspero.
-  // `forceSteps`: escala fixa (ex.: maior) para imagens-partitura — ver main.js, "modo partitura"
+  // `forceSteps`: escala fixa (ex.: maior) para imagens-partitura — ver main.js, "modo partitura".
+  // No modo partitura a nota soa como uma caixinha de música: uma oitava acima, ataque nítido,
+  // termina antes da próxima coluna (notas repetidas ficam separadas) e sem panorâmica.
   function scan(f, seconds = 6, tension = .3, forceSteps = null) {
     if (!ctx || !f) return 0;
+    const score = !!forceSteps;
     const steps = forceSteps || modeFor(tension).steps, len = steps.length, n = f.cols.length;
+    const colDur = seconds / n;
     f.cols.forEach((col, i) => {
       const at = .05 + (i / n) * seconds;
       col.peaks.forEach(pk => {
         const deg = Math.round((1 - pk.y) * (len * 3 - 1));
-        tone({ freq: degFreq(KEY * .5, steps, deg), dur: Math.max(.25, seconds / n * 3),
+        if (score) {
+          const fr = degFreq(KEY, steps, deg);                       // 1 oitava acima (440–660 Hz)
+          tone({ freq: fr, dur: colDur * 1.6, type: 'triangle', vol: .16, layer: 'img', at, attack: .008, lp: 5000 });
+          tone({ freq: fr * 2, dur: colDur * 0.9, type: 'sine', vol: .04, layer: 'img', at, attack: .005 });  // brilho
+          return;
+        }
+        tone({ freq: degFreq(KEY * .5, steps, deg), dur: Math.max(.25, colDur * 3),
                type: pk.warm ? 'sawtooth' : 'sine', vol: (.03 + .1 * pk.a) * (pk.warm ? .6 : 1),
                layer: 'img', at, pan: col.x * 2 - 1, lp: 3000, attack: .015 });
       });
