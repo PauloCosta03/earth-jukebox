@@ -157,5 +157,25 @@ window.EJ_LAYERS = {
    1995
   ],
   "source": "NASA Ozone Watch (GSFC) — TOMS Nimbus-7, Meteor-3, Earth Probe e OMI; média 20/set–20/out"
+ },
+ "ocean": {
+  "atlas": "assets/layers/ocean.png",
+  "cols": 1,
+  "rows": 1,
+  "frameW": 288,
+  "frameH": 180,
+  "range": [
+   -1.0,
+   1.0
+  ],
+  "frames": {
+   "hist": [
+    1985,
+    2014,
+    0,
+    30
+   ]
+  },
+  "source": "NASA GISS-E2.1-G (CMIP6), altura do mar (zos) -> correntes geostróficas, média 1985–2014"
  }
 };

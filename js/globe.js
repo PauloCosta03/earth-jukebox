@@ -332,11 +332,13 @@ function init() {
   );
   tilt.add(clouds);
 
-  // ---------- 🌬️ ventos: partículas que seguem o vento médio da década ----------
-  // Cada partícula é um traço curto: cabeça brilhante, cauda apagada, na direção do vento.
-  const wind = (() => {
-    const m = L.wind, N = 8000;
+  // ---------- partículas que seguem um campo de velocidade (🌬️ ventos e 🌊 correntes) ----------
+  // Cada partícula é um traço curto: cabeça brilhante, cauda apagada, na direção do fluxo.
+  // o = { N: quantidade, R: raio da esfera, SPEED: graus/s por m/s, TAIL: cauda (s),
+  //       ref: velocidade (m/s) que dá brilho máximo, color: [r,g,b], oceanOnly: só no mar }
+  function makeFlow(m, o) {
     if (!m) return null;
+    const N = o.N;
     let data = null;                                             // pixels do atlas (RGBA)
     new THREE.ImageLoader(manager).load(m.atlas, img => {
       const c = document.createElement('canvas');
@@ -345,11 +347,15 @@ function init() {
       data = g.getImageData(0, 0, img.width, img.height).data;
     });
     const [lo, hi] = m.range, W = m.cols * m.frameW;
-    // vento (m/s) no quadro f, na posição lat/lon, com interpolação bilinear
-    function sample(f, lat, lon) {
+    const cellOf = (f, lat, lon) => {
       const col = f % m.cols, row = Math.floor(f / m.cols);
       const x = ((lon + 180) / 360 * m.frameW - 0.5 + m.frameW) % m.frameW;
       const y = clamp((90 - lat) / 180 * m.frameH - 0.5, 0, m.frameH - 1);
+      return { col, row, x, y };
+    };
+    // velocidade (m/s) no quadro f, na posição lat/lon, com interpolação bilinear
+    function sample(f, lat, lon) {
+      const { col, row, x, y } = cellOf(f, lat, lon);
       const x0 = Math.floor(x), y0 = Math.floor(y), fx = x - x0, fy = y - y0;
       const x1 = (x0 + 1) % m.frameW, y1 = Math.min(y0 + 1, m.frameH - 1);
       const px = (xx, yy, ch) => data[((row * m.frameH + yy) * W + col * m.frameW + xx) * 4 + ch];
@@ -358,10 +364,19 @@ function init() {
       const dec = b => (b - 1) / 254 * (hi - lo) + lo;
       return [dec(bil(0)), dec(bil(1))];
     }
+    // canal azul do atlas do oceano: 255 = mar, 0 = terra
+    function isSea(lat, lon) {
+      if (!data) return true;
+      const { col, row, x, y } = cellOf(0, lat, lon);
+      return data[((row * m.frameH + Math.round(y)) * W + col * m.frameW + Math.round(x) % m.frameW) * 4 + 2] > 0;
+    }
     const lat = new Float32Array(N), lon = new Float32Array(N), age = new Float32Array(N), life = new Float32Array(N);
     const spawn = i => {
-      lat[i] = THREE.MathUtils.radToDeg(Math.asin(Math.random() * 2 - 1));   // uniforme na esfera
-      lon[i] = Math.random() * 360 - 180;
+      for (let tries = 0; tries < 30; tries++) {
+        lat[i] = THREE.MathUtils.radToDeg(Math.asin(Math.random() * 2 - 1));   // uniforme na esfera
+        lon[i] = Math.random() * 360 - 180;
+        if (!o.oceanOnly || isSea(lat[i], lon[i])) break;
+      }
       age[i] = 0; life[i] = 2 + Math.random() * 3;
     };
     for (let i = 0; i < N; i++) { spawn(i); age[i] = Math.random() * life[i]; }
@@ -373,36 +388,47 @@ function init() {
                                               blending: THREE.AdditiveBlending, depthWrite: false });
     const lines = new THREE.LineSegments(geo, mat);
     earth.add(lines);                                            // gira junto com a Terra
-    const R = 1.038, D2R = Math.PI / 180;
+    const R = o.R, D2R = Math.PI / 180, [cr, cg, cb] = o.color;
     // mesma conversão lat/lon -> xyz que a SphereGeometry usa para a textura
-    function xyz(la, lo, out, o) {
+    function xyz(la, lo, out, k) {
       const phi = (lo + 180) * D2R, th = (90 - la) * D2R;
-      out[o] = -Math.cos(phi) * Math.sin(th) * R; out[o + 1] = Math.cos(th) * R; out[o + 2] = Math.sin(phi) * Math.sin(th) * R;
+      out[k] = -Math.cos(phi) * Math.sin(th) * R; out[k + 1] = Math.cos(th) * R; out[k + 2] = Math.sin(phi) * Math.sin(th) * R;
     }
+    let respawned = false;
     function step(dt, F, opacity) {
       mat.opacity = opacity;
       if (!data || opacity < 0.01) return;
-      const SPEED = 0.9, TAIL = 1.1;                             // graus por segundo por m/s · cauda em segundos
+      if (o.oceanOnly && !respawned) {                           // dados chegaram: tira quem nasceu em terra
+        for (let i = 0; i < N; i++) if (!isSea(lat[i], lon[i])) spawn(i);
+        respawned = true;
+      }
       for (let i = 0; i < N; i++) {
         age[i] += dt;
         const a = sample(F[0], lat[i], lon[i]), b = sample(F[1], lat[i], lon[i]);
         const u = a[0] + (b[0] - a[0]) * F[2], v = a[1] + (b[1] - a[1]) * F[2];
         const cl = Math.max(Math.cos(lat[i] * D2R), 0.05);
-        const dLon = u * SPEED / cl, dLat = v * SPEED;
+        const dLon = u * o.SPEED / cl, dLat = v * o.SPEED;
         lat[i] += dLat * dt; lon[i] += dLon * dt;
         if (lon[i] > 180) lon[i] -= 360; if (lon[i] < -180) lon[i] += 360;
-        if (age[i] > life[i] || Math.abs(lat[i]) > 85) spawn(i);
+        if (age[i] > life[i] || Math.abs(lat[i]) > 85 || (o.oceanOnly && !isSea(lat[i], lon[i]))) spawn(i);
         xyz(lat[i], lon[i], pos, i * 6);
-        xyz(lat[i] - dLat * TAIL, lon[i] - dLon * TAIL, pos, i * 6 + 3);
+        xyz(lat[i] - dLat * o.TAIL, lon[i] - dLon * o.TAIL, pos, i * 6 + 3);
         const spd = Math.hypot(u, v), fade = Math.sin(Math.PI * age[i] / life[i]);
-        const br = fade * clamp(spd / 5, 0.35, 1) * 1.5;
-        col.set([0.75 * br, 0.95 * br, br, 0, 0, 0], i * 6);     // cabeça ciano-clara, cauda apagada
+        const br = fade * clamp(spd / o.ref, 0.25, 1) * 1.5;
+        col.set([cr * br, cg * br, cb * br, 0, 0, 0], i * 6);    // cabeça colorida, cauda apagada
       }
       geo.attributes.position.needsUpdate = true;
       geo.attributes.color.needsUpdate = true;
     }
     return { step };
-  })();
+  }
+
+  // 🌬️ vento médio da década (modelo GISS), acima das nuvens; branco-ciano
+  const wind = makeFlow(L.wind, { N: 8000, R: 1.038, SPEED: 0.9, TAIL: 1.1, ref: 5, color: [0.75, 0.95, 1.0] });
+  // 🌊 correntes oceânicas (geostróficas, GISS), rente ao mar; verde-água. Correntes andam ~20x mais
+  //     devagar que o vento, então a velocidade visual é ampliada (SPEED maior).
+  const ocean = makeFlow(L.ocean, { N: 9000, R: 1.004, SPEED: 16, TAIL: 1.5, ref: 0.25,
+                                    color: [0.4, 1.6, 1.35], oceanOnly: true });
 
   // Qual quadro do atlas mostrar para um ano: devolve { idx, ok } (ok=false se não há dado)
   // frames: { hist: [primeiro, último, índice inicial, passo], ssp126: [...], ... }
@@ -426,10 +452,10 @@ function init() {
 
   // ---------- estado e alvos (interpolados p/ transições suaves) ----------
   const layers = { lights: true, sea: true, ice: true, heat: false, spin: true,
-                   clouds: true, ndvi: false, fire: false, wind: false, ozone: false };
+                   clouds: true, ndvi: false, fire: false, wind: false, ozone: false, ocean: false };
   const T = { heat: 0, lights: 0, sea: 0, iceEdge: 76, atmo: 0.25, year: EJ.YEAR_MIN };
   let yearCur = EJ.YEAR_MIN;                                     // ano que desliza suavemente até T.year
-  const on = { ndvi: 0, fire: 0, wind: 0, heat: 0, ozone: 0 };  // disponibilidade × botão, suavizados
+  const on = { ndvi: 0, fire: 0, wind: 0, heat: 0, ozone: 0, ocean: 0 };  // disponibilidade × botão, suavizados
   let curAtmo = 0.25;
   const COLD = new THREE.Color(0x3f7dff), HOT = new THREE.Color(0xff7a3c);
 
@@ -492,6 +518,8 @@ function init() {
       }
     }
     if (wind) wind.step(dt, fW.F, on.wind * 0.9);
+    on.ocean += ((layers.ocean ? 1 : 0) - on.ocean) * k;          // correntes: campo fixo (clima atual)
+    if (ocean) ocean.step(dt, [0, 0, 0], on.ocean * 0.9);
     U.uTime.value += dt;
     U.uLightsOn.value += ((layers.lights ? 1 : 0) - U.uLightsOn.value) * k;
     U.uSeaOn.value += ((layers.sea ? 1 : 0) - U.uSeaOn.value) * k;

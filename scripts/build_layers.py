@@ -374,8 +374,71 @@ def build_wind():
             "source": "NASA GISS-E2.1-G (CMIP6), vento a 10 m (uas/vas), média por década"}
 
 
+def build_ocean():
+    """Correntes de superfície pelo equilíbrio geostrófico, a partir da altura do mar (zos).
+
+    A água escorre ao longo das "ladeiras" da superfície do mar, desviada pela rotação da Terra:
+        u = -(g/f) dη/dy     v = (g/f) dη/dx     f = 2Ω sen(lat)
+    Perto do equador f ≈ 0 e a fórmula não vale: lá o campo é atenuado até zero.
+    Média 1985–2014 (clima atual), modelo NASA GISS-E2.1-G.
+    """
+    print("🌊  correntes oceânicas (GISS-E2.1-G zos -> geostrófico, média 1985–2014)")
+    fields = []
+    for period in ("195101-200012", "200101-201412"):
+        url = GISS.format(mip="CMIP", exp="historical", table="Omon", var="zos", ver="v20190903", period=period)
+        with Dataset(download(url, CACHE / "giss" / Path(url).name)) as ds:
+            z = np.ma.filled(ds.variables["zos"][:].astype("f8"), np.nan)
+            lat = np.ma.getdata(ds.variables["lat"][:]).astype("f8")   # números simples (não mascarados)
+            lon = np.ma.getdata(ds.variables["lon"][:]).astype("f8")
+        y0 = int(period[:4])
+        for i in range(z.shape[0] // 12):
+            if 1985 <= y0 + i <= 2014:
+                fields.append(np.nanmean(z[i * 12:(i + 1) * 12], axis=0))
+    eta = np.nanmean(fields, axis=0)                          # [lat, lon], sul -> norte, lon 0..360
+    land = np.isnan(eta)
+    R, OMEGA, G = 6.371e6, 7.292e-5, 9.81
+    phi = np.radians(lat)[:, None]
+    dlat, dlon = np.radians(lat[1] - lat[0]), np.radians(lon[1] - lon[0])
+    # As células encostadas na terra têm alturas extremas (artefato do modelo): ficam fora do cálculo.
+    near = land.copy()
+    for dy, dx in ((1, 0), (-1, 0), (0, 1), (0, -1), (1, 1), (1, -1), (-1, 1), (-1, -1)):
+        near |= np.roll(np.roll(land, dy, 0), dx, 1)
+    # derivadas centradas (onde algum vizinho é costa, o resultado vira NaN -> velocidade 0)
+    e = np.where(near, np.nan, eta)
+    # suavização 3x3 (média só dos vizinhos que são oceano) para tirar o ruído de célula a célula
+    stack = [np.roll(np.roll(e, dy, 0), dx, 1) for dy in (-1, 0, 1) for dx in (-1, 0, 1)]
+    with np.errstate(all="ignore"):
+        e = np.where(near, np.nan, np.nanmean(stack, axis=0))
+    ex = (np.roll(e, -1, 1) - np.roll(e, 1, 1)) / (2 * dlon * R * np.maximum(np.cos(phi), 0.05))
+    ey = np.full_like(e, np.nan)
+    ey[1:-1] = (e[2:] - e[:-2]) / (2 * dlat * R)
+    f = 2 * OMEGA * np.sin(phi)
+    f = np.where(np.abs(f) < 1e-6, 1e-6, f)
+    u, v = -G / f * ey, G / f * ex
+    taper = np.clip((np.abs(lat)[:, None] - 3) / 7, 0, 1)    # 0 até 3°, 1 a partir de 10°
+    taper *= np.clip((86 - np.abs(lat)[:, None]) / 8, 0, 1)  # e some perto dos polos (grade instável)
+    u, v = np.nan_to_num(u * taper), np.nan_to_num(v * taper)
+    spd = np.hypot(u, v)
+    k = np.where(spd > 1.0, 1.0 / np.maximum(spd, 1e-9), 1.0)  # limita a 1 m/s
+    u, v = u * k, v * k
+    u[land], v[land] = 0, 0
+    # norte no topo e longitude -180..180 (mesmo padrão das texturas)
+    shift = int(np.argmin(np.abs(((lon + 180) % 360) - 180 + 180 - (lon[1] - lon[0]) / 2)))
+    u, v = np.roll(u, -shift, 1)[::-1], np.roll(v, -shift, 1)[::-1]
+    rng_ = 1.0
+    enc = lambda a: (np.clip((a + rng_) / (2 * rng_), 0, 1) * 254 + 1).astype(np.uint8)
+    img = np.dstack([enc(u), enc(v), np.where(land, 0, 255)[::-1].astype(np.uint8)])  # B = é oceano
+    img[..., 2] = np.roll(img[..., 2], -shift, 1)
+    OUT.mkdir(parents=True, exist_ok=True)
+    Image.fromarray(img, "RGB").save(OUT / "ocean.png", optimize=True)
+    print(f"  -> assets/layers/ocean.png  {img.shape[1]}x{img.shape[0]}  (máx {np.hypot(u, v).max():.2f} m/s)")
+    return {"atlas": "assets/layers/ocean.png", "cols": 1, "rows": 1, "frameW": int(img.shape[1]),
+            "frameH": int(img.shape[0]), "range": [-rng_, rng_], "frames": {"hist": [1985, 2014, 0, 30]},
+            "source": "NASA GISS-E2.1-G (CMIP6), altura do mar (zos) -> correntes geostróficas, média 1985–2014"}
+
+
 BUILDERS = {"clouds": build_clouds, "temp": build_temp, "ndvi": build_ndvi, "fire": build_fire,
-            "wind": build_wind, "ozone": build_ozone}
+            "wind": build_wind, "ozone": build_ozone, "ocean": build_ocean}
 
 
 def main():

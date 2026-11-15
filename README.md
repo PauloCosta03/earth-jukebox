@@ -12,7 +12,7 @@ Alternativas: `python -m http.server 8000` na pasta do projeto, ou a extensão *
 
 ## O globo 3D
 
-Terra renderizada com **three.js** e texturas reais da NASA (Blue Marble de dia, Black Marble à noite, relevo e máscara de oceanos), com rotação, dia/noite, atmosfera e estrelas. Arraste para girar, role para aproximar.
+Terra renderizada com **three.js**, com **relevo 3D** (altitude real, exagero vertical ~20x) e texturas reais da NASA (Blue Marble de dia, Black Marble à noite, relevo e máscara de oceanos), com rotação, dia/noite, atmosfera e estrelas. Arraste para girar, role para aproximar.
 
 ### Camadas visuais (chips no topo)
 
@@ -26,6 +26,7 @@ Terra renderizada com **three.js** e texturas reais da NASA (Blue Marble de dia,
 | 🌿 Vegetação | Mês de pico verde de cada ano, 2001–2025 | NASA GIBS — MODIS NDVI |
 | 🔥 Queimadas | Onde o fogo é frequente em cada ano, 2001–2025 | NASA GIBS — MODIS Thermal Anomalies |
 | 🌬️ Ventos | Partículas seguindo o vento médio de cada década, por cenário | Modelo GISS-E2.1-G (uas/vas) |
+| 🌊 Correntes do mar | Partículas seguindo as correntes de superfície (clima atual, 1985–2014) | Modelo GISS-E2.1-G: altura do mar (zos) → correntes geostróficas |
 | 🛡️ Ozônio | Buraco de ozônio na Antártida (abaixo de 220 DU), set–out de cada ano, 1979–2025 | NASA Ozone Watch (TOMS, OMI) |
 
 ### Camadas de áudio (cards à direita)
