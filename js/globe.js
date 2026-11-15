@@ -104,6 +104,7 @@ function init() {
     uIceEdge: { value: 76 }, uIceOn: { value: 1 },
     uAtmoColor: { value: new THREE.Color(0x3f7dff) },
     uTime: { value: 0 },
+    uRelief: { value: 1 },                                      // ⛰️ intensidade do relevo (0 = liso)
     // camadas com atlas: textura, grade (colunas, linhas, largura e altura do quadro)
     // e F = (quadro A, quadro B, mistura) para transição suave entre anos
     uTempTex: { value: A.temp.tex }, uTempGrid: { value: A.temp.grid }, uTempF: { value: new THREE.Vector3() },
@@ -128,7 +129,23 @@ function init() {
   const FRAG = /* glsl */`
     uniform sampler2D uDay, uNight, uTopo, uWater;
     uniform vec3 uSunDir, uAtmoColor;
-    uniform float uHeat, uHeatOn, uLights, uLightsOn, uSea, uSeaOn, uIceEdge, uIceOn;
+    uniform float uHeat, uHeatOn, uLights, uLightsOn, uSea, uSeaOn, uIceEdge, uIceOn, uRelief;
+
+    // ⛰️ Relevo por "bump mapping": compara a altitude deste pixel com a dos vizinhos na tela
+    // e inclina a normal da superfície. A esfera continua lisa; só a luz muda.
+    // (mesma técnica do three.js — perturbNormalArb)
+    vec3 reliefNormal(vec2 uv, vec3 n, vec3 pos, float scale){
+      vec2 dx = dFdx(uv), dy = dFdy(uv);
+      if (abs(dx.x) > 0.5 || abs(dy.x) > 0.5) return n;          // costura da textura (lon ±180°)
+      float h0 = texture2D(uTopo, uv).r;
+      float dHx = (texture2D(uTopo, uv + dx).r - h0) * scale;
+      float dHy = (texture2D(uTopo, uv + dy).r - h0) * scale;
+      vec3 sx = dFdx(pos), sy = dFdy(pos);
+      vec3 r1 = cross(sy, n), r2 = cross(n, sx);
+      float det = dot(sx, r1);
+      vec3 grad = sign(det) * (dHx * r1 + dHy * r2);
+      return normalize(abs(det) * n - grad);
+    }
     uniform float uTime, uNdviOn, uFireOn, uOzoneOn;
     uniform sampler2D uTempTex, uNdviTex, uFireTex, uOzoneTex;
     uniform vec4 uTempGrid, uNdviGrid, uFireGrid, uOzoneGrid;
@@ -203,7 +220,9 @@ function init() {
       day = mix(day, tc.rgb, tc.a * uHeatOn);
 
       // --- iluminação (sol fixo; a Terra gira => dia e noite)
-      float sun = dot(n, normalize(uSunDir));
+      // relevo só em terra firme (sem gelo/inundação por cima)
+      vec3 nr = reliefNormal(vUv, n, vPos, 0.07 * uRelief * land * (1.0 - clamp(flood, 0.0, 1.0)));
+      float sun = dot(nr, normalize(uSunDir));
       float dayAmt = clamp(sun * 1.6 + 0.12, 0.0, 1.0);
       vec3 viewDir = normalize(cameraPosition - vPos);
       vec3 h = normalize(normalize(uSunDir) + viewDir);
@@ -389,7 +408,7 @@ function init() {
 
   // ---------- estado e alvos (interpolados p/ transições suaves) ----------
   const layers = { lights: true, sea: true, ice: true, heat: false, spin: true,
-                   clouds: true, ndvi: false, fire: false, wind: false, ozone: false };
+                   clouds: true, ndvi: false, fire: false, wind: false, ozone: false, relief: true };
   const T = { heat: 0, lights: 0, sea: 0, iceEdge: 76, atmo: 0.25, year: EJ.YEAR_MIN };
   let yearCur = EJ.YEAR_MIN;                                     // ano que desliza suavemente até T.year
   const on = { ndvi: 0, fire: 0, wind: 0, heat: 0, ozone: 0 };  // disponibilidade × botão, suavizados
@@ -459,6 +478,7 @@ function init() {
     U.uLightsOn.value += ((layers.lights ? 1 : 0) - U.uLightsOn.value) * k;
     U.uSeaOn.value += ((layers.sea ? 1 : 0) - U.uSeaOn.value) * k;
     U.uIceOn.value += ((layers.ice ? 1 : 0) - U.uIceOn.value) * k;
+    U.uRelief.value += ((layers.relief ? 1 : 0) - U.uRelief.value) * k;
     curAtmo += (T.atmo - curAtmo) * k;
     U.uAtmoColor.value.copy(COLD).lerp(HOT, U.uHeat.value * (layers.heat ? 1 : 0) * 0.9);
     atmoU.uIntensity.value = 0.75 + curAtmo * 1.0;
