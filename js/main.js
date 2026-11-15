@@ -176,7 +176,9 @@
     if (!f) { msg.textContent = 'Nenhum quadro disponível para varrer ainda.'; return; }
     lastF = f;
     const secs = 6, tension = mode === 'frame' ? EJ.audio.tensionOf(null, f) : EJ.audio.tensionOf(EJ.at(cur), f);
-    EJ.audio.scan(f, secs, tension);
+    // 🎼 modo partitura: imagens com "partitura" no nome tocam na escala maior (melodias conhecidas)
+    const score = mode === 'frame' && media && media.score;
+    EJ.audio.scan(f, secs, tension, score ? EJ.audio.MAJOR : null);
     const sl = $('scanline');
     sl.style.setProperty('--dur', secs + 's'); sl.classList.remove('run'); void sl.offsetWidth; sl.classList.add('run');
     announce('Varrendo a imagem da esquerda para a direita: notas mais agudas são partes mais altas da imagem. ' + EJ.vision.describe(f));
@@ -256,7 +258,7 @@
       };
     } else el.alt = 'Imagem carregada: ' + file.name;
     $('frame-view').replaceChildren(el);
-    media = { kind: video ? 'video' : 'image', el, url, name: file.name };
+    media = { kind: video ? 'video' : 'image', el, url, name: file.name, score: /partitura/i.test(file.name) };
     EJ.vision.reset(); lastF = null;
     setMode('frame');
     msg.textContent = `${file.name}: escolha um perfil de som e aperte Tocar ou Varrer.`;

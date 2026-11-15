@@ -1,94 +1,145 @@
-"""Gera uma imagem que TOCA uma melodia quando é varrida no Earth Jukebox (botão Varrer / tecla S).
+"""Gera imagens-partitura: melodias de domínio público desenhadas como estrelas sobre a Terra.
+
+Abra a imagem em Instrumentos -> Abrir imagem ou vídeo e aperte Varrer (tecla S).
+O nome do arquivo contém "partitura": o app então usa a ESCALA MAIOR na varredura (modo partitura).
 
 Como a varredura do js/vision.js lê a imagem:
   - a imagem é reduzida para 96x54 e dividida em 48 colunas (6 segundos -> 0,125 s por coluna);
-  - em cada coluna, o ponto claro vira uma nota: quanto mais ALTO na imagem, mais AGUDA;
-    grau da escala = round((1 - linha/53) * 14);
-  - fundo escuro e azulado = silêncio e escala pentatônica maior (lá, si, dó#, mi, fá#).
+  - em cada coluna, o ponto mais claro vira nota: quanto mais ALTO, mais AGUDO;
+    grau da escala = round((1 - linha/53) * 20)   (7 notas x 3 oitavas - 1)
+  - tudo que é escuro (céu, Terra, linhas da constelação, título) fica abaixo do limiar e é silêncio.
 
-Melodias aqui são de domínio público. Uso:
-    python scripts/make_melody_image.py
-Saída: exemplos/*.png  (abra em Instrumentos -> Abrir imagem ou vídeo e aperte Varrer)
+Uso:  python scripts/make_melody_image.py
 """
+import math
+import random
 from pathlib import Path
 
-from PIL import Image, ImageDraw
+import numpy as np
+from PIL import Image, ImageDraw, ImageFilter, ImageFont
 
 ROOT = Path(__file__).resolve().parent.parent
 OUT = ROOT / "exemplos"
-COLS, ROWS = 48, 54                 # grade de análise do vision.js (96x54 px, 2 px por coluna)
-CELL = 20                           # cada célula da grade vira 20x20 px -> imagem 1920x1080
-DEG_MAX = 14                        # 5 notas x 3 oitavas - 1
+COLS, ROWS = 48, 54                 # grade de análise do vision.js
+W, H = 1920, 1080                   # imagem final (16:9, igual à tela)
+CW, RH = W / COLS, H / ROWS         # largura de coluna e altura de linha em pixels
+DEG_MAX = 20
 
-# Pentatônica maior em lá: graus 0..4 = lá, si, dó#, mi, fá# (a cada 5 graus, uma oitava acima)
-NOTE = {"A": 5, "B": 6, "C#": 7, "E": 8, "F#": 9, "A'": 10, "B'": 11}
+# Escala maior em lá (grau 7 = lá3, 220 Hz): lá si dó# ré mi fá# sol#
+NOTE = {"E3": 4, "F#3": 5, "G#3": 6, "A": 7, "B": 8, "C#": 9, "D": 10, "E": 11, "F#": 12, "G#": 13, "A'": 14}
 
 MELODIES = {
-    # Mary Had a Little Lamb (tradicional, domínio público), em lá maior.
-    # (nota, duração em colunas): semínima = 2 colunas, mínima = 4 colunas
-    "mary_had_a_little_lamb": [
-        ("C#", 2), ("B", 2), ("A", 2), ("B", 2), ("C#", 2), ("C#", 2), ("C#", 4),
-        ("B", 2), ("B", 2), ("B", 4),
-        ("C#", 2), ("E", 2), ("E", 4),
-        ("C#", 2), ("B", 2), ("A", 2), ("B", 2), ("C#", 2), ("C#", 2), ("C#", 2), ("C#", 2),
-    ],
+    # Beethoven, 9ª Sinfonia (1824) — domínio público. Semínima = 2 colunas.
+    "ode_a_alegria": ("Ode à Alegria · Beethoven", [
+        ("C#", 2), ("C#", 2), ("D", 2), ("E", 2), ("E", 2), ("D", 2), ("C#", 2), ("B", 2),
+        ("A", 2), ("A", 2), ("B", 2), ("C#", 2), ("C#", 3), ("B", 1), ("B", 4),
+    ]),
+    # Melodia tradicional francesa (séc. XVIII) — domínio público.
+    "brilha_brilha_estrelinha": ("Brilha, Brilha, Estrelinha · tradicional", [
+        ("A", 2), ("A", 2), ("E", 2), ("E", 2), ("F#", 2), ("F#", 2), ("E", 4),
+        ("D", 2), ("D", 2), ("C#", 2), ("C#", 2), ("B", 2), ("B", 2), ("A", 4),
+    ]),
 }
 
 
 def row_for(degree):
-    """Linha (0 = topo) que o vision.js converte de volta no grau desejado."""
     return round((1 - degree / DEG_MAX) * (ROWS - 1))
 
 
-def draw(name, melody):
-    W = COLS * CELL
-    img = Image.new("RGB", (W, ROWS * CELL), (8, 16, 38))      # azul-noite = silêncio
+def star(d, cx, cy, r, fill):
+    """Estrela de 5 pontas."""
+    pts = []
+    for i in range(10):
+        a = -math.pi / 2 + i * math.pi / 5
+        rr = r if i % 2 == 0 else r * 0.45
+        pts.append((cx + rr * math.cos(a), cy + rr * math.sin(a)))
+    d.polygon(pts, fill=fill)
+
+
+def draw(name, title, melody):
+    rnd = random.Random(name)
+    img = Image.new("RGB", (W, H), (3, 6, 16))
     d = ImageDraw.Draw(img)
-    # linhas-guia discretas (só decoração; escuras demais para virar nota)
-    for deg in range(0, DEG_MAX + 1):
-        y = row_for(deg) * CELL + CELL // 2
-        d.line([(0, y), (W, y)], fill=(16, 30, 62), width=1)
-    col = 0
+    # céu: estrelinhas de fundo MUITO apagadas (precisam ficar abaixo do limiar de nota)
+    for _ in range(500):
+        x, y, c = rnd.randrange(W), rnd.randrange(H), rnd.randrange(18, 30)
+        d.point((x, y), fill=(c, c + 2, c + 10))
+    # Terra escura no rodapé (lado noturno), com borda azul discreta
+    R = 1500
+    d.ellipse([W / 2 - R, H - 230, W / 2 + R, H - 230 + 2 * R], fill=(8, 18, 44))
+    d.ellipse([W / 2 - R + 6, H - 224, W / 2 + R - 6, H - 224 + 2 * R], fill=(5, 11, 28))
+    # posições das notas
+    total = sum(n for _, n in melody)
+    pos, col = [], (COLS - total) // 2                     # centraliza (silêncio curto antes)
     for note, length in melody:
         r = row_for(NOTE[note])
-        # nota = 1 coluna acesa; o resto da duração fica escuro (separa notas repetidas)
-        x0, y0 = col * CELL, r * CELL
-        d.rounded_rectangle([x0 + 2, y0 + 2, x0 + CELL - 2, y0 + CELL - 2], radius=5, fill=(245, 250, 255))
+        pos.append(((col + 0.5) * CW, (r + 0.5) * RH))
         col += length
     if col > COLS:
         raise ValueError(f"{name}: {col} colunas (máximo {COLS})")
+    # linhas da "constelação" ligando as notas (escuras: não tocam)
+    d.line(pos, fill=(14, 24, 52), width=3)
+    # brilho suave em volta de cada nota (camada desfocada, escura o bastante)
+    glow = Image.new("RGB", (W, H), (0, 0, 0))
+    gd = ImageDraw.Draw(glow)
+    for x, y in pos:
+        gd.ellipse([x - 26, y - 26, x + 26, y + 26], fill=(18, 26, 48))
+    img = Image.fromarray(np.maximum(np.asarray(img), np.asarray(glow.filter(ImageFilter.GaussianBlur(10)))))
+    d = ImageDraw.Draw(img)
+    # as notas: estrelas brancas-azuladas (cor fria = timbre suave), do tamanho de uma célula
+    for x, y in pos:
+        # núcleo brilhante que cobre a célula inteira (garante a leitura em qualquer navegador)
+        d.ellipse([x - CW * 0.45, y - RH * 0.45, x + CW * 0.45, y + RH * 0.45], fill=(225, 236, 255))
+        star(d, x, y, RH * 1.05, (240, 247, 255))
+    # título discreto (escuro: não toca)
+    try:
+        font = ImageFont.truetype("arial.ttf", 34)          # tem acentos (Windows)
+    except OSError:
+        font = ImageFont.load_default(size=34)
+    d.text((40, 30), title, fill=(30, 36, 56), font=font)
+    d.text((40, 72), "Earth Jukebox · abra e aperte Varrer (S)", fill=(24, 30, 48), font=font)
     OUT.mkdir(exist_ok=True)
-    path = OUT / f"{name}.png"
+    path = OUT / f"{name}.partitura.png"
     img.save(path, optimize=True)
     return path, col
 
 
-def verify(path):
-    """Refaz a leitura como o vision.js (reduz para 96x54 e acha o ponto claro de cada coluna)."""
-    small = Image.open(path).convert("RGB").resize((96, 54), Image.BILINEAR)
+def read_like_vision(path, method):
+    """Leitura como o vision.js: reduz para 96x54, até 2 picos por coluna (>= 0,1, 6 linhas de distância)."""
+    small = Image.open(path).convert("RGB").resize((96, 54), method)
     px = small.load()
-    seq = []
+    out = []
     for c in range(COLS):
-        best, best_row = 0.0, None
+        rows = []
         for y in range(54):
+            a = 0.0
             for x in (2 * c, 2 * c + 1):
                 r, g, b = (v / 255 for v in px[x, y])
+                mx, mn = max(r, g, b), min(r, g, b)
                 l = 0.2126 * r + 0.7152 * g + 0.0722 * b
-                s = (max(r, g, b) - min(r, g, b)) / max(r, g, b) if max(r, g, b) else 0
-                sal = l * (0.4 + 0.6 * s)
-                if sal > best:
-                    best, best_row = sal, y
-        if best >= 0.1:
-            seq.append((c, round((1 - best_row / 53) * DEG_MAX)))
-    return seq
+                s = (mx - mn) / mx if mx else 0
+                a += l * (0.4 + 0.6 * s)
+            rows.append((a / 2, y))
+        rows.sort(reverse=True)
+        peaks = []
+        for a, y in rows:
+            if a < 0.1 or len(peaks) >= 2:
+                break
+            if all(abs(p - y) >= 6 for p in peaks):
+                peaks.append(y)
+        out += [round((1 - y / 53) * DEG_MAX) for y in peaks]
+    return out
 
 
 if __name__ == "__main__":
     names = {v: k for k, v in NOTE.items()}
-    for name, mel in MELODIES.items():
-        path, used = draw(name, mel)
-        got = verify(path)
+    for old in OUT.glob("mary_had_a_little_lamb*.png"):     # exemplo antigo (pentatônico), substituído
+        old.unlink()
+    for name, (title, mel) in MELODIES.items():
+        path, used = draw(name, title, mel)
         want = [NOTE[n] for n, _ in mel]
-        ok = [g for _, g in got] == want
-        print(f"{path.relative_to(ROOT)}  ({used}/{COLS} colunas)  leitura {'OK' if ok else 'DIFERENTE'}:",
-              " ".join(names.get(g, str(g)) for _, g in got))
+        for label, method in (("suave", Image.BILINEAR), ("seca", Image.NEAREST)):
+            got = read_like_vision(path, method)
+            ok = got == want
+            print(f"{path.name:42s} redução {label:5s}: {'OK' if ok else 'DIFERENTE'}  "
+                  + " ".join(names.get(g, str(g)) for g in got))

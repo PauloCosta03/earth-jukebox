@@ -235,9 +235,10 @@ EJ.audio = (function () {
 
   // Varredura estilo "leitor de imagem": esquerda→direita; altura do pixel = altura da nota,
   // brilho = volume, posição horizontal = panorâmica, matiz quente = timbre áspero.
-  function scan(f, seconds = 6, tension = .3) {
+  // `forceSteps`: escala fixa (ex.: maior) para imagens-partitura — ver main.js, "modo partitura"
+  function scan(f, seconds = 6, tension = .3, forceSteps = null) {
     if (!ctx || !f) return 0;
-    const steps = modeFor(tension).steps, len = steps.length, n = f.cols.length;
+    const steps = forceSteps || modeFor(tension).steps, len = steps.length, n = f.cols.length;
     f.cols.forEach((col, i) => {
       const at = .05 + (i / n) * seconds;
       col.peaks.forEach(pk => {
@@ -272,6 +273,7 @@ EJ.audio = (function () {
   };
 
   return {
+    MAJOR: [0, 2, 4, 5, 7, 9, 11],                     // escala maior (modo partitura)
     init, play, scan, audible, rec, modeFor, tensionOf, degFreq, MODES, PROFILES, TICK,
     toggleSolo(k) { state.solo = state.solo === k ? null : k; applyMix(); return state.solo; },
     toggleLayer(k) { state.off.has(k) ? state.off.delete(k) : state.off.add(k); state.solo = null; applyMix(); },
