@@ -177,5 +177,13 @@ window.EJ_LAYERS = {
    ]
   },
   "source": "NASA GISS-E2.1-G (CMIP6), altura do mar (zos) -> correntes geostróficas, média 1985–2014"
+ },
+ "ocean_lic": {
+  "image": "assets/layers/ocean_lic.png",
+  "source": "LIC das correntes geostróficas (ocean.png)"
+ },
+ "waves": {
+  "image": "assets/textures/waves.png",
+  "source": "gerada (visual, não é dado)"
  }
 };

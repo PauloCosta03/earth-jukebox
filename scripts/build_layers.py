@@ -437,8 +437,74 @@ def build_ocean():
             "source": "NASA GISS-E2.1-G (CMIP6), altura do mar (zos) -> correntes geostróficas, média 1985–2014"}
 
 
+def build_ocean_lic():
+    """🌊 Caminhos das correntes: textura de riscos alinhados ao fluxo (LIC).
+
+    LIC = line integral convolution: para cada pixel, segue a corrente para a frente e para trás
+    e tira a média de um ruído aleatório ao longo do caminho. Resultado: riscos que desenham as
+    trilhas da água. O shader depois desliza esses riscos ao longo da corrente (animação).
+    Usa assets/layers/ocean.png (gerado por build_ocean).
+    """
+    print("🌊  caminhos das correntes (LIC sobre ocean.png)")
+    src = np.asarray(Image.open(OUT / "ocean.png")).astype("f4")
+    u = (src[..., 0] - 1) / 254 * 2 - 1
+    v = (src[..., 1] - 1) / 254 * 2 - 1
+    sea = src[..., 2] > 0
+    W, H = 1440, 720                                          # 4x a grade do modelo
+    big = lambda a: np.asarray(Image.fromarray(a.astype("f4"), "F").resize((W, H), Image.BILINEAR))
+    U, V = big(u), big(v)
+    spd = np.hypot(U, V)
+    ux, vy = U / np.maximum(spd, 1e-6), -V / np.maximum(spd, 1e-6)   # direção (y da imagem cresce p/ sul)
+    rng = np.random.default_rng(7)
+    noise = rng.random((H, W)).astype("f4")
+    yy, xx = np.mgrid[0:H, 0:W].astype("f4")
+    acc, n = noise.copy(), np.ones((H, W), "f4")
+    for sign in (1, -1):                                      # para a frente e para trás
+        x, y = xx.copy(), yy.copy()
+        for _ in range(45):                                   # comprimento dos riscos
+            xi, yi = x.astype(int) % W, np.clip(y.astype(int), 0, H - 1)
+            x = x + sign * ux[yi, xi] * 0.9
+            y = y + sign * vy[yi, xi] * 0.9
+            xi, yi = x.astype(int) % W, np.clip(y.astype(int), 0, H - 1)
+            acc += noise[yi, xi]
+            n += 1
+    lic = acc / n
+    lic = (lic - lic.mean()) / (lic.std() + 1e-6)             # realça o contraste dos riscos
+    lic = np.clip(lic * 0.22 + 0.5, 0, 1)
+    img = (lic * 255).astype(np.uint8)
+    Image.fromarray(img, "L").save(OUT / "ocean_lic.png", optimize=True)
+    print(f"  -> assets/layers/ocean_lic.png  {W}x{H}")
+    return {"image": "assets/layers/ocean_lic.png", "source": "LIC das correntes geostróficas (ocean.png)"}
+
+
+def build_waves():
+    """Textura de ondas que se repete sem emenda (para o shader não calcular ruído por pixel).
+
+    R = altura, G = inclinação leste-oeste, B = inclinação norte-sul. Ruído filtrado no domínio
+    da frequência (FFT) — o que sai de uma FFT inversa já se repete perfeitamente nas bordas.
+    """
+    print("〰️  textura de ondas (FFT, repetível)")
+    N = 256
+    rng = np.random.default_rng(3)
+    f = np.fft.fftfreq(N)
+    k = np.hypot(*np.meshgrid(f, f))
+    spectrum = np.fft.fft2(rng.standard_normal((N, N))) * np.exp(-(k / 0.06) ** 2) * (k > 0.004)
+    h = np.real(np.fft.ifft2(spectrum))
+    h = (h - h.min()) / (h.max() - h.min())
+    gx = (np.roll(h, -1, 1) - np.roll(h, 1, 1)) / 2
+    gy = (np.roll(h, 1, 0) - np.roll(h, -1, 0)) / 2           # +y = norte (topo da imagem)
+    g = max(np.abs(gx).max(), np.abs(gy).max())
+    enc = lambda a: (np.clip(a / g * 0.5 + 0.5, 0, 1) * 255).astype(np.uint8)
+    img = np.dstack([(h * 255).astype(np.uint8), enc(gx), enc(gy)])
+    dest = ROOT / "assets" / "textures" / "waves.png"
+    Image.fromarray(img, "RGB").save(dest, optimize=True)
+    print("  -> assets/textures/waves.png  256x256")
+    return {"image": "assets/textures/waves.png", "source": "gerada (visual, não é dado)"}
+
+
 BUILDERS = {"clouds": build_clouds, "temp": build_temp, "ndvi": build_ndvi, "fire": build_fire,
-            "wind": build_wind, "ozone": build_ozone, "ocean": build_ocean}
+            "wind": build_wind, "ozone": build_ozone, "ocean": build_ocean,
+            "ocean_lic": build_ocean_lic, "waves": build_waves}
 
 
 def main():

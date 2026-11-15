@@ -29,7 +29,7 @@ catch (e) { fail('Seu navegador não suporta WebGL — o globo 3D não vai apare
 if (renderer) init();
 
 function init() {
-  renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+  renderer.setPixelRatio(Math.min(devicePixelRatio, 1.5));   // telas muito densas pesam demais
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
   renderer.toneMappingExposure = 1.05;
@@ -116,6 +116,9 @@ function init() {
     uOcean: { value: L.ocean ? (() => { const o = loader.load(L.ocean.atlas); o.generateMipmaps = false;
                                          o.minFilter = THREE.LinearFilter; return o; })() : null },
     uOceanOn: { value: 0 },
+    uLic: { value: L.ocean_lic ? (() => { const o = loader.load(L.ocean_lic.image); o.wrapS = THREE.RepeatWrapping; return o; })() : null },
+    uWaves: { value: (() => { const o = loader.load('assets/textures/waves.png');
+                              o.wrapS = o.wrapT = THREE.RepeatWrapping; return o; })() },
     uAxis: { value: new THREE.Vector3(0, 1, 0) },               // eixo norte da Terra (para as ondas)
     uOzoneTex: { value: A.ozone.tex }, uOzoneGrid: { value: A.ozone.grid }, uOzoneF: { value: new THREE.Vector3() },
     uOzoneOn: { value: 0 }
@@ -170,7 +173,7 @@ function init() {
       return normalize(abs(det) * n - grad);
     }
     uniform float uTime, uNdviOn, uFireOn, uOzoneOn, uOceanOn;
-    uniform sampler2D uOcean;
+    uniform sampler2D uOcean, uLic, uWaves;
     uniform vec3 uAxis;
     uniform sampler2D uTempTex, uNdviTex, uFireTex, uOzoneTex;
     uniform vec4 uTempGrid, uNdviGrid, uFireGrid, uOzoneGrid;
@@ -247,33 +250,37 @@ function init() {
 
       // --- iluminação (sol fixo; a Terra gira => dia e noite)
       // relevo só em terra firme (sem gelo/inundação por cima)
-      // --- 🌊 ÁGUA EM MOVIMENTO (flow map)
-      // Um padrão de ondas (ruído) é arrastado na direção e velocidade das correntes reais.
-      // Truque das duas fases: duas cópias do padrão, defasadas meio ciclo; enquanto uma
-      // "reinicia", a outra está no auge — assim o arrasto nunca estica nem dá salto.
-      vec3 oc = texture2D(uOcean, vUv).rgb;
-      vec2 cur = ((oc.rg * 255.0 - 1.0) / 254.0 * 2.0 - 1.0) * step(0.5, oc.b);   // m/s (leste, norte)
-      float cl = max(cos(radians(lat)), 0.2);
-      vec2 flowDeg = vec2(cur.x / cl, cur.y) * 14.0 * uOceanOn;                 // graus por ciclo
-      vec2 base = vec2(lon, lat) * 1.1 + vec2(uTime * 0.12, uTime * 0.04);       // ondas sempre derivam
-      float T = uTime * 0.22, p0 = fract(T), p1 = fract(T + 0.5);
-      float w0 = 1.0 - abs(2.0 * p0 - 1.0);
-      // altura das ondas num ponto do mapa (graus), já arrastada pela corrente
-      #define WAVE(b) (fbm((b) - flowDeg * p0) * w0 + fbm((b) + vec2(17.3, 9.1) - flowDeg * p1) * (1.0 - w0))
-      float hwBig = WAVE(base);
-      float hw = hwBig + 0.35 * vnoise(vec2(lon, lat) * 4.0 + uTime * 0.6);   // + marola fina (só na cor)
+      // --- 🌊 ÁGUA EM MOVIMENTO (flow map, tudo com texturas prontas = leve)
+      // Ondas e "riscos" das correntes são arrastados na direção e velocidade das correntes reais.
+      // Truque das duas fases: duas cópias defasadas meio ciclo; enquanto uma "reinicia", a outra
+      // está no auge — o arrasto nunca estica nem dá salto.
       float sea = water * (1.0 - ice);                                           // só mar aberto
-      // a água muda de tom com as ondas; onde a corrente é forte, fica verde-azulada
-      float spd = smoothstep(0.04, 0.3, length(cur)) * uOceanOn;
-      day = mix(day, day * (0.82 + 0.36 * hw) + vec3(0.02, 0.16, 0.20) * spd * (0.4 + hw), sea);
-      // normal da água: inclinação das ondas para leste (gx) e norte (gy), medida no próprio mapa
       vec3 nw = n;
       if (sea > 0.01) {
-        float e = 0.15;
-        float gx = (WAVE(base + vec2(e, 0.0)) - hwBig) / e;
-        float gy = (WAVE(base + vec2(0.0, e)) - hwBig) / e;
+        vec3 oc = texture2D(uOcean, vUv).rgb;
+        vec2 cur = ((oc.rg * 255.0 - 1.0) / 254.0 * 2.0 - 1.0) * step(0.5, oc.b);   // m/s (leste, norte)
+        float cl = max(cos(radians(lat)), 0.2);
+        vec2 flowUv = vec2(cur.x / cl / 360.0, cur.y / 180.0) * 14.0;            // deslocamento por ciclo
+        float T = uTime * 0.22, p0 = fract(T), p1 = fract(T + 0.5);
+        float w0 = 1.0 - abs(2.0 * p0 - 1.0);
+
+        // ondas: textura repetível (R altura, G/B inclinação), sempre derivando devagar
+        vec2 wb = vUv * vec2(360.0, 180.0) / 8.0 + vec2(uTime * 0.006, uTime * 0.002);
+        vec2 fw = flowUv * vec2(360.0, 180.0) / 8.0 * uOceanOn;
+        vec3 wa = texture2D(uWaves, wb - fw * p0).rgb, wc = texture2D(uWaves, wb + 0.37 - fw * p1).rgb;
+        vec3 wv = wa * w0 + wc * (1.0 - w0);
+        float hw = wv.r;
+        vec2 g = wv.gb * 2.0 - 1.0;                                              // inclinação leste/norte
+
+        // 🧭 caminhos das correntes: riscos alinhados ao fluxo (LIC) deslizando ao longo do caminho
+        float la = texture2D(uLic, vUv - flowUv * p0).r, lb = texture2D(uLic, vUv - flowUv * p1 + vec2(0.5, 0.0)).r;
+        float streak = smoothstep(0.45, 0.78, la * w0 + lb * (1.0 - w0));
+        float spd = smoothstep(0.015, 0.12, length(cur)) * uOceanOn;            // só onde há corrente de verdade
+
+        day = mix(day, day * (0.85 + 0.3 * hw), sea);                            // tom das ondas
+        day += vec3(0.18, 0.70, 0.75) * streak * spd * sea;                      // trilhas verde-água
         vec3 east = normalize(cross(uAxis, n) + 1e-5), north = cross(n, east);
-        nw = normalize(n - 0.10 * sea * (gx * east + gy * north));
+        nw = normalize(n - 0.12 * sea * (g.x * east + g.y * north));
       }
 
       vec3 nr = reliefNormal(vUv, n, vPos, 0.07 * uRelief * land * (1.0 - clamp(flood, 0.0, 1.0)));
@@ -319,7 +326,7 @@ function init() {
   tilt.rotation.z = THREE.MathUtils.degToRad(-23.4);
   scene.add(tilt);
   const earth = new THREE.Mesh(
-    new THREE.SphereGeometry(1, 720, 360),                     // malha fina: o relevo precisa de vértices
+    new THREE.SphereGeometry(1, 512, 256),                     // malha fina: o relevo precisa de vértices
     new THREE.ShaderMaterial({ uniforms: U, vertexShader: EARTH_VERT, fragmentShader: FRAG })
   );
   tilt.add(earth);
