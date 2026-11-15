@@ -24,17 +24,6 @@
       'O globo 3D precisa de um servidor local.<br>Dê dois cliques em <b>run.bat</b> na pasta do projeto<br>e abra <b>http://localhost:8013</b>.';
   }
 
-  const events = {
-    1880: 'Era industrial: carvão alimenta o mundo.', 1910: 'O planeta ainda soa em harmonia.',
-    1945: 'Pós-guerra: explosão do petróleo e do consumo.', 1958: 'Começa a medição de CO₂ em Mauna Loa.',
-    1979: 'Satélites começam a medir o gelo do Ártico.',
-    1988: 'Cientistas da NASA alertam o Congresso dos EUA sobre o aquecimento global.',
-    1993: 'Satélites passam a medir o nível do mar.', 2012: 'Recorde de derretimento do gelo do Ártico.',
-    2015: 'Acordo de Paris: meta de 1,5 °C.', 2024: 'Ano mais quente da história medida.',
-    [EJ.YEAR_NOW + 1]: 'A partir daqui: projeções do modelo climático da NASA (GISS, CMIP6).',
-    2050: 'Meados do século: o cenário escolhido decide a música.',
-    2100: 'Fim do século. Que música vamos deixar?'
-  };
 
   const sign = v => (v > 0 ? '+' : v < 0 ? '−' : '');
   const fmt = {
@@ -45,6 +34,53 @@
     img: f => !f ? '–' : (f.topHues.length ? EJ.vision.hueName(f.topHues[0].bin) : 'sem cor') +
       ' · ' + Math.round(f.density * 100) + '% brilho'
   };
+
+  // ---------------------------------------------------------------- acontecimentos (js/events.js)
+  // Anos com acontecimento: os históricos (EJ.EVENTS) + os marcos do futuro (montados com os dados).
+  const eventYears = () => [...Object.keys(EJ.EVENTS).map(Number), ...EJ.FUTURE_YEARS].sort((a, b) => a - b);
+  const lastEventUpTo = y => eventYears().filter(k => k <= y).pop();
+  const wait = ms => new Promise(r => setTimeout(r, ms));
+  // temperatura em palavras (a voz lê melhor que "+0,45 °C")
+  const tempWords = t => Math.abs(t) < 0.05 ? 'na média de 1951 a 1980'
+    : `${nf(Math.abs(t), 1)} grau${Math.abs(t) >= 2 ? 's' : ''} ${t > 0 ? 'acima' : 'abaixo'} da média de 1951 a 1980`;
+
+  function eventAt(y) {
+    if (EJ.EVENTS[y]) return EJ.EVENTS[y];
+    if (!EJ.FUTURE_YEARS.includes(y)) return null;
+    const v = EJ.at(y), s = ({ ssp126: 'de emissões baixas', ssp245: 'intermediário', ssp585: 'de emissões muito altas' })[EJ.scenario];
+    if (y === EJ.FUTURE_YEARS[0]) return { future: true, title: 'Começam as projeções',
+      text: `Daqui em diante, os números vêm do modelo climático da NASA, no cenário ${s}. Troque o cenário no painel Camadas para ouvir a diferença.`,
+      impact: EJ.impactFor(v.temp) };
+    const ice = v.ice == null ? '' : ` O gelo do Ártico no fim do verão fica em ${nf(v.ice, 1)} milhões de quilômetros quadrados.`;
+    const FUTURE_TITLES = { 2040: 'O mundo em 2040', 2050: 'Meados do século', 2075: 'O mundo em 2075', 2100: 'Fim do século' };
+    return { future: true, title: FUTURE_TITLES[y] || `O mundo em ${y}`,
+      text: `No cenário ${s}, o planeta fica ${tempWords(v.temp)}, e o gás carbônico chega a ${nf(v.co2, 0)} partes por milhão.${ice} O mar sobe ${nf(Math.max(0, v.sea) / 10, 0)} centímetros desde 1993.`,
+      impact: EJ.impactFor(v.temp) + (y === EJ.YEAR_MAX ? ' Que música vamos deixar para quem vem depois?' : '') };
+  }
+  // texto falado completo: ano, título, o que aconteceu, impacto e os dados medidos naquele ano
+  function eventSpeech(y, ev) {
+    const v = EJ.at(y);
+    const data = ev.future ? '' : ` Naquele ano, a temperatura estava ${tempWords(v.temp)}, e o gás carbônico em ${nf(v.co2, 0)} partes por milhão.`;
+    return `${y}. ${ev.title}. ${ev.text} Impacto na Terra: ${ev.impact}${data}`;
+  }
+  // mostra o acontecimento na barra (para quem vê)
+  function showEvent(y, ev, full = false) {
+    const strong = document.createElement('strong');
+    strong.textContent = `${y} · ${ev.title}`;
+    msg.replaceChildren(strong, document.createTextNode(full ? ' — ' + ev.impact : ''));
+    msg.classList.toggle('event', full);
+  }
+  // conta um acontecimento e só termina quando a fala termina (voz do app) ou após o tempo de leitura
+  function tellEvent(y, ev) {
+    clearTimeout(soonT);                              // não deixa a descrição do slider atropelar
+    showEvent(y, ev, true);
+    const text = eventSpeech(y, ev);
+    const voiceOn = EJ.a11y && EJ.a11y.options.voice && 'speechSynthesis' in window;
+    if (voiceOn) return EJ.a11y.speakAsync(text).then(() => wait(350));
+    announce(text);                                   // o leitor de tela lê a região viva
+    return wait(Math.max(3500, text.length * 62));    // ~16 caracteres por segundo
+  }
+  const storyOn = () => !EJ.a11y || EJ.a11y.options.story;
 
   // ---------------------------------------------------------------- utilidades de interface
   // troca o ícone de um botão: <svg><use href="#i-nome"></svg>
@@ -94,7 +130,15 @@
       `gelo do Ártico ${fmt.ice(v.ice)}; nível do mar ${fmt.sea(v.sea)} em relação a 1993. ` +
       `A música está em ${harmonyOf(v)}: quanto mais quente, mais instável a harmonia. ` +
       (on.length ? `Camadas ligadas no globo: ${on.map(k => LAYER_NAMES[k] || k).join(', ')}. ` : 'Nenhuma camada ligada. ') +
+      eventContext(cur) +
       (lastF ? EJ.vision.describe(lastF) : '');
+  }
+  function eventContext(y) {
+    const ey = lastEventUpTo(y);
+    if (ey == null) return '';
+    const ev = eventAt(ey);
+    return ey === y ? `Acontecimento deste ano: ${ev.title}. ${ev.impact} `
+                    : `Último acontecimento: ${ey}, ${ev.title}. Aperte fecha colchete para ouvir o próximo. `;
   }
 
   // ---------------------------------------------------------------- renderização
@@ -110,13 +154,15 @@
     slider.style.setProperty('--fill', v.projected ? 'var(--accent-2)' : '#ff7a52');
     yearSub.textContent = v.projected ? 'projeção · ' + scenarioShort() : 'medido';
     // texto que leitores de tela falam ao mexer no controle de ano
-    slider.setAttribute('aria-valuetext', `${y}${v.projected ? ', projeção' : ''}, temperatura ${fmt.temp(v.temp)}`);
+    const evHere = eventAt(y);
+    slider.setAttribute('aria-valuetext', `${y}${v.projected ? ', projeção' : ''}, temperatura ${fmt.temp(v.temp)}` +
+      (evHere ? `, acontecimento: ${evHere.title}` : ''));
     yearEl.classList.toggle('proj', v.projected);
     EJ.LAYERS.forEach(k => ($('v-' + k).textContent = fmt[k](v[k])));
     if (sound) intro = false;
-    const ev = Object.keys(events).map(Number).filter(k => k <= y).pop();
-    if (ev && !intro) msg.textContent = `${ev}: ${events[ev]}`;
-    if (events[y] && sound) announce(`${y}: ${events[y]}`);
+    const ey = lastEventUpTo(y);
+    if (ey != null && !intro && !(holding && ey === y)) showEvent(ey, eventAt(ey));
+    if (evHere && sound && !storyOn()) announce(`${y}: ${evHere.title}.`);
     EJ.chart.draw(y);
     if (EJ.globe) EJ.globe.update(v);
     if (sound) {
@@ -148,20 +194,57 @@
   }
 
   // ---------------------------------------------------------------- reprodução
+  // playing = linha do tempo do globo tocando · holding = parada num acontecimento, contando.
+  // runId muda a cada tocar/parar: um "contar" antigo que termine depois não reinicia nada.
+  let playing = false, holding = false, toldYear = null, runId = 0;
+
   function stop(state = 'play') {
     EJ.audio.stopNotes(); clearTimeout(scoreT); scorePlaying = false;
-    clearInterval(timer); timer = null; setPlay(state);
+    playing = false; holding = false; runId++;
+    clearTimeout(timer); clearInterval(timer); timer = null; setPlay(state);
     if (media && media.kind === 'video') media.el.pause();
   }
 
   function startGlobe() {
-    if (cur >= EJ.YEAR_MAX) cur = EJ.YEAR_MIN;
-    timer = setInterval(() => {
-      render(cur);
+    if (cur >= EJ.YEAR_MAX) { cur = EJ.YEAR_MIN; toldYear = null; }
+    playing = true;
+    step(++runId);
+  }
+  function step(id) {
+    if (!playing || id !== runId) return;
+    render(cur);
+    const advance = () => {
+      if (!playing || id !== runId) return;
       if (cur >= EJ.YEAR_MAX) {
-        if ($('loop').checked) cur = EJ.YEAR_MIN; else { stop('again'); announce('Fim: 2100. Aperte tocar para recomeçar.'); }
+        if ($('loop').checked) { cur = EJ.YEAR_MIN; toldYear = null; }
+        else { stop('again'); announce('Fim da linha do tempo, 2100. Aperte tocar para recomeçar.'); return; }
       } else cur++;
-    }, EJ.TICK_MS);
+      timer = setTimeout(() => step(id), EJ.TICK_MS);
+    };
+    const ev = eventAt(cur);
+    if (ev && storyOn() && toldYear !== cur) {         // modo história: pausa e conta
+      toldYear = cur; holding = true;
+      tellEvent(cur, ev).then(() => { holding = false; advance(); });
+    } else advance();
+  }
+
+  // pula para o acontecimento anterior/próximo e conta (teclas [ e ], botões ⏮ ⏭)
+  function jumpEvent(dir) {
+    if (mode !== 'globe') return;
+    EJ.audio.init();
+    const years = eventYears();
+    const target = dir > 0 ? years.find(y => y > cur) : [...years].reverse().find(y => y < cur);
+    if (target == null) { announce(dir > 0 ? 'Não há mais acontecimentos depois deste ano.' : 'Este é o primeiro acontecimento.'); return; }
+    const resume = playing;
+    stop(resume ? 'pause' : 'play');
+    const id = runId;
+    holding = true; intro = false;
+    render(target, true);
+    toldYear = target;
+    tellEvent(target, eventAt(target)).then(() => {
+      holding = false;
+      if (resume && id === runId) startGlobe();        // estava tocando: continua dali
+    });
   }
 
   function startFrame() {
@@ -172,7 +255,7 @@
 
   playBtn.onclick = () => {
     EJ.audio.init();
-    if (timer) { stop(); announce(`Pausado em ${cur}.`); return; }
+    if (playing || timer) { stop(); announce(`Pausado em ${cur}.`); return; }
     if (mode === 'frame' && media && media.score) { $('scan').click(); return; }   // imagem-partitura: Tocar = Varrer
     if (mode === 'frame' && media && media.kind === 'score') {                     // arquivo de partitura
       if (scorePlaying) { stop(); announce('Parado.'); return; }
@@ -182,9 +265,13 @@
       return;
     }
     setPlay('pause');
+    clearTimeout(soonT);
     if (mode === 'globe') { announce(`Tocando a partir de ${cur >= EJ.YEAR_MAX ? EJ.YEAR_MIN : cur}.`); startGlobe(); }
     else startFrame();
   };
+
+  $('ev-prev').onclick = () => jumpEvent(-1);
+  $('ev-next').onclick = () => jumpEvent(1);
 
   $('mute').onclick = e => {
     const btn = e.currentTarget, m = EJ.audio.toggleMute();
@@ -454,6 +541,8 @@
     else if (!typing && /^[sS]$/.test(e.key)) $('scan').click();
     else if (!typing && /^[dD]$/.test(e.key)) $('describe').click();
     else if (!typing && /^[mM]$/.test(e.key)) $('mute').click();
+    else if (!typing && e.key === ']') { e.preventDefault(); jumpEvent(1); }
+    else if (!typing && e.key === '[') { e.preventDefault(); jumpEvent(-1); }
     else if (t === document.body && mode === 'globe' && (e.key === 'ArrowRight' || e.key === 'ArrowLeft')) {
       e.preventDefault();
       EJ.audio.init();
@@ -471,7 +560,7 @@
   addEventListener('resize', () => { if (mode === 'globe') EJ.chart.draw(cur); });
 
   // usado por js/a11y.js (atalhos, guia, reduzir movimento)
-  EJ.ui = { openPanel, closePanels, announce, setIcon, syncChips, describe: describeFull, isPlaying: () => !!timer || scorePlaying };
+  EJ.ui = { openPanel, closePanels, announce, setIcon, syncChips, describe: describeFull, isPlaying: () => playing || !!timer || scorePlaying };
 
   setPlay('play');
   refreshCards();

@@ -211,6 +211,12 @@ select option{background:var(--panel-solid)}
    ===================================================================== */
 .player{justify-self:center;width:min(52rem,100%);padding:.65rem 1rem .75rem}
 #msg{margin:0 0 .45rem;text-align:center;font-size:.88rem;color:#ffe2d9;min-height:1.3em}
+#msg strong{color:#fff;font-weight:600}
+/* acontecimento sendo contado: texto maior, com o impacto na Terra */
+#msg.event{font-size:.95rem;line-height:1.4;padding:.35rem .6rem;border-radius:var(--radius-sm);
+  background:rgba(255,179,92,.1);border:1px solid rgba(255,179,92,.3);animation:slide .3s var(--ease)}
+#msg.event strong{color:var(--accent-2)}
+body.frame-mode #ev-prev,body.frame-mode #ev-next,body.frame-mode #story{display:none}
 .transport{display:flex;align-items:center;gap:.9rem}
 .play{display:grid;place-items:center;width:3.4rem;height:3.4rem;flex:none;border-radius:50%;border:0;color:#1b0d05;
   background:radial-gradient(circle at 35% 30%,#ffc38a,#ff7a52 70%);box-shadow:0 .3rem 1.4rem rgba(255,130,80,.45);

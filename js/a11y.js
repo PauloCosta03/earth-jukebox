@@ -17,7 +17,8 @@ EJ.a11y = (function () {
   const KEY = 'ej-a11y';
   const sysMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
   const sysContrast = matchMedia('(prefers-contrast: more)').matches;
-  const opt = { voice: true, chimes: true, rate: 1.05, size: 1, contrast: sysContrast, motion: sysMotion };
+  const opt = { voice: true, chimes: true, rate: 1.05, size: 1, contrast: sysContrast, motion: sysMotion,
+                story: true };   // story = pausar a música nos acontecimentos e contá-los
   try { Object.assign(opt, JSON.parse(localStorage.getItem(KEY) || '{}')); } catch (e) { /* sem armazenamento */ }
   const save = () => { try { localStorage.setItem(KEY, JSON.stringify(opt)); } catch (e) { /* ok */ } };
 
@@ -40,8 +41,8 @@ EJ.a11y = (function () {
   let speaking = 0;
   const duck = on => { try { EJ.audio && EJ.audio.duck(on); } catch (e) { /* áudio ainda não iniciou */ } };
   // fala um texto. Textos longos são divididos em frases (o Chrome corta falas muito longas).
-  function speak(text, { interrupt = true, force = false } = {}) {
-    if (!synth || !text || (!opt.voice && !force)) return;
+  function speak(text, { interrupt = true, force = false, onDone = null } = {}) {
+    if (!synth || !text || (!opt.voice && !force)) { if (onDone) onDone(false); return; }
     if (interrupt) { synth.cancel(); speaking = 0; }
     const parts = String(text).replace(/\s+/g, ' ').match(/[^.!?;:]+[.!?;:]?/g) || [text];
     const chunks = [];
@@ -49,15 +50,27 @@ EJ.a11y = (function () {
       const last = chunks[chunks.length - 1];
       if (last && (last + p).length < 180) chunks[chunks.length - 1] = last + p; else chunks.push(p.trim());
     }
-    for (const c of chunks) {
-      if (!c) continue;
+    const list = chunks.filter(Boolean);
+    list.forEach((c, i) => {
       const u = new SpeechSynthesisUtterance(c);
       u.lang = 'pt-BR'; if (voice) u.voice = voice;
       u.rate = opt.rate; u.pitch = 1;
       u.onstart = () => { speaking++; duck(true); };
-      u.onend = u.onerror = () => { speaking = Math.max(0, speaking - 1); if (!synth.speaking) duck(false); };
+      u.onend = u.onerror = () => {
+        speaking = Math.max(0, speaking - 1); if (!synth.speaking) duck(false);
+        if (i === list.length - 1 && onDone) onDone(true);           // avisa quando a ÚLTIMA frase terminou
+      };
       synth.speak(u);
-    }
+    });
+  }
+  // fala e devolve uma Promise que termina quando a voz acaba (usada no modo "Contar a história").
+  // Segurança: se o navegador nunca avisar o fim, libera depois do tempo estimado de fala.
+  function speakAsync(text) {
+    return new Promise(resolve => {
+      if (!synth || !opt.voice) { resolve(false); return; }
+      const limit = setTimeout(() => resolve(true), 4000 + String(text).length * 110 / opt.rate);
+      speak(text, { onDone: ok => { clearTimeout(limit); resolve(ok); } });
+    });
   }
   const quiet = () => { if (synth) synth.cancel(); duck(false); };
 
@@ -254,6 +267,8 @@ EJ.a11y = (function () {
     setSwitch('opt-chimes', opt.chimes);
     setSwitch('opt-contrast', opt.contrast);
     setSwitch('opt-motion', opt.motion);
+    setSwitch('opt-story', opt.story);
+    const sb = $('story'); sb.setAttribute('aria-pressed', String(opt.story));
     $('opt-rate').value = String(opt.rate);
     const r = document.querySelector(`input[name="opt-size"][value="${opt.size}"]`); if (r) r.checked = true;
     document.documentElement.style.setProperty('--text-scale', opt.size);
@@ -267,6 +282,14 @@ EJ.a11y = (function () {
     opt.motion = !opt.motion; save(); apply();
     if (EJ.globe && opt.motion && EJ.globe.layers.spin) { EJ.globe.toggle('spin'); EJ.ui.syncChips(); }
   };
+  // modo "Contar a história": mesmo estado no painel Acessibilidade e no botão de livro da barra
+  const setStory = on => {
+    opt.story = on; save(); apply();
+    speak(on ? 'Contar a história ligado: a música pausa em cada acontecimento para contar o que aconteceu e o impacto na Terra.'
+             : 'Contar a história desligado: a música toca sem pausas.');
+  };
+  $('opt-story').onclick = () => setStory(!opt.story);
+  $('story').onclick = () => setStory(!opt.story);
   $('opt-rate').onchange = e => { opt.rate = +e.target.value; save(); speak('Velocidade da voz ajustada.'); };
   document.querySelectorAll('input[name="opt-size"]').forEach(r => r.addEventListener('change', () => {
     opt.size = +r.value; save(); apply();
@@ -288,5 +311,5 @@ EJ.a11y = (function () {
   $('tour').onclick = () => speak(TOUR, { force: true });
 
   apply();
-  return { speak, quiet, chime, describe, options: opt };
+  return { speak, speakAsync, quiet, chime, describe, options: opt };
 })();

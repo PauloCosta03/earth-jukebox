@@ -67,6 +67,7 @@ Na imagem, as notas encontradas aparecem com um círculo verde para conferir a l
 A interface fica em três faixas: **topo** (menu e visualização), **painel lateral** (um aberto por vez) e **barra de reprodução**. Tudo é feito para funcionar só com teclado e para quem não enxerga.
 
 - **Narração por voz** (`js/a11y.js`): ao navegar com **Tab**, cada controle diz em voz alta o que faz e o estado atual (ligado/desligado, valor, aberto/fechado). A música abaixa enquanto a voz fala. Texto de cada controle no atributo `data-say` do `index.html`. Tecla **V** liga/desliga (para quem já usa leitor de tela).
+- **Contar a história** (botão de livro na barra, ou no painel Acessibilidade): a música **pausa em cada acontecimento** de 1880 a 2025 (`js/events.js`) e a voz — ou o leitor de tela — conta o que aconteceu, o **impacto na Terra** e os dados medidos naquele ano; depois continua sozinha. Após 2025, marcos do futuro (2026, 2040, 2050, 2075, 2100) são montados com os dados do modelo da NASA para o cenário escolhido. **[ ]** e os botões ⏮ ⏭ pulam entre acontecimentos.
 - **Sons da interface**: toques curtos na mesma tonalidade da música (lá maior pentatônica) ao navegar, ligar/desligar e abrir painéis — dá para "ouvir" onde se está.
 - **Painel Acessibilidade**: narração, velocidade da voz, sons da interface, tamanho do texto, alto contraste, reduzir movimento, guia falado e lista de atalhos.
 - **Esconder a interface** (botão de olho ou **H**) e **tela cheia** (**F**).
@@ -80,6 +81,7 @@ A interface fica em três faixas: **topo** (menu e visualização), **painel lat
 | ← → | ano (Shift: 10 anos) | H | esconder / mostrar interface |
 | D | descrever a tela | F | tela cheia |
 | S | varrer a imagem | ? | painel Acessibilidade |
+| [ ] | acontecimento anterior / próximo | | |
 | M | silenciar a música | Esc | fecha o painel |
 
 ## Estrutura
@@ -91,6 +93,7 @@ css/style.css               estilos
 js/globe.js                 globo 3D (three.js + shaders das camadas)
 js/audio.js                 motor de áudio (Web Audio), uma camada por dado
 js/chart.js                 gráfico 2D das séries
+js/events.js                acontecimentos da linha do tempo (o que aconteceu + impacto na Terra)
 js/data.js                  junta histórico e projeção (interpolação PCHIP, emenda suave)
 js/vision.js                visão computacional: imagem → características musicais
 js/score.js                 partituras: MusicXML, MIDI e leitura óptica de imagem → notas
