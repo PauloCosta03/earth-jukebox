@@ -6,3 +6,6 @@ __pycache__/
 .DS_Store
 Thumbs.db
 data/cache/
+
+# easter egg: MIDI pessoal só no seu computador (não distribuir músicas de terceiros)
+assets/easter/

@@ -263,7 +263,8 @@ EJ.audio = (function () {
 
   // 🎼 Toca uma lista de notas { midi, start, dur } (de score.js). Caixinha de música na camada "img".
   let scoreNodes = [];
-  function playNotes(notes, { gain = 1 } = {}) {
+  // timbre: 'box' (caixinha de música) ou 'ocarina' (seno suave com vibrato, notas sustentadas)
+  function playNotes(notes, { gain = 1, timbre = 'box' } = {}) {
     if (!ctx || !notes || !notes.length) return 0;
     stopNotes();
     const t0 = ctx.currentTime + .1;
@@ -273,11 +274,21 @@ EJ.audio = (function () {
     for (const n of notes) {
       const f = 440 * Math.pow(2, (n.midi - 69) / 12), t = t0 + n.start, d = Math.max(.08, Math.min(n.dur, 4));
       const osc = ctx.createOscillator(), g = ctx.createGain();
-      osc.type = 'triangle'; osc.frequency.value = f;
+      osc.type = timbre === 'ocarina' ? 'sine' : 'triangle'; osc.frequency.value = f;
       g.gain.setValueAtTime(0, t);
-      g.gain.linearRampToValueAtTime(vol, t + .008);
-      g.gain.setTargetAtTime(vol * .55, t + .03, .15);                // queda suave, como corda/caixinha
-      g.gain.setTargetAtTime(.0001, t + d * .92, .04);                // solta perto do fim da nota
+      if (timbre === 'ocarina') {
+        // sopro: entra macio, sustenta, vibrato de ~5 Hz que aparece depois do início da nota
+        const lfo = ctx.createOscillator(), depth = ctx.createGain();
+        lfo.frequency.value = 5.2; depth.gain.setValueAtTime(0, t); depth.gain.linearRampToValueAtTime(f * .006, t + .25);
+        lfo.connect(depth); depth.connect(osc.frequency); lfo.start(t); lfo.stop(t + d + .3);
+        scoreNodes.push(lfo);
+        g.gain.linearRampToValueAtTime(vol * 1.1, t + .05);
+        g.gain.setTargetAtTime(.0001, t + d * .95, .05);
+      } else {
+        g.gain.linearRampToValueAtTime(vol, t + .008);
+        g.gain.setTargetAtTime(vol * .55, t + .03, .15);              // queda suave, como corda/caixinha
+        g.gain.setTargetAtTime(.0001, t + d * .92, .04);              // solta perto do fim da nota
+      }
       osc.connect(g); g.connect(bus.img);
       osc.start(t); osc.stop(t + d + .3);
       scoreNodes.push(osc);
